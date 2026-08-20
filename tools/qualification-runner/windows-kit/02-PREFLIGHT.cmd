@@ -1,7 +1,7 @@
 @echo off
 setlocal
-set "KIT_ROOT=%~dp0"
-"%KIT_ROOT%PremiereAIHarness-Qualification.exe" preflight -kit "%KIT_ROOT%"
+for %%I in ("%~dp0.") do set "KIT_ROOT=%%~fI"
+"%KIT_ROOT%\PremiereAIHarness-Qualification.exe" preflight -kit "%KIT_ROOT%"
 set "RC=%ERRORLEVEL%"
 if not "%PAI_NONINTERACTIVE%"=="1" pause
 exit /b %RC%
