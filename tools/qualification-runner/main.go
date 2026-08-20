@@ -30,6 +30,8 @@ func main() {
 		err = commandStatus(os.Args[2:])
 	case "selftest":
 		err = commandSelftest(os.Args[2:])
+	case "smoke":
+		err = commandSmoke(os.Args[2:])
 	case "version", "--version", "-v":
 		fmt.Printf("Premiere AI Harness Qualification Runner %s (product %s)\n", runnerVersion, productVersion)
 		return
@@ -45,7 +47,7 @@ func main() {
 
 func usage() {
 	fmt.Println("Premiere AI Harness Qualification Runner")
-	fmt.Println("Commands: config, preflight, qualify, collect, cleanup, status, selftest")
+	fmt.Println("Commands: config, preflight, qualify, collect, cleanup, status, selftest, smoke")
 }
 
 func kitRootFromArgs(args []string) (string, []string, error) {
