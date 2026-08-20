@@ -1,0 +1,40 @@
+name: Qualification runner CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Go runner (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tools/qualification-runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+          cache-dependency-path: tools/qualification-runner/go.mod
+      - run: go test ./...
+      - run: go vet ./...
+      - name: Build Windows x64 executable
+        shell: bash
+        run: |
+          mkdir -p ../../dist
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o ../../dist/PremiereAIHarness-Qualification.exe .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PremiereAIHarness-Qualification-${{ matrix.os }}
+          path: dist/PremiereAIHarness-Qualification.exe
+          if-no-files-found: error
