@@ -16,7 +16,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: tools/qualification-runner
@@ -26,13 +26,73 @@ jobs:
         with:
           go-version: "1.22.x"
           cache-dependency-path: tools/qualification-runner/go.mod
-      - run: go test ./...
-      - run: go vet ./...
+      - name: Unit and integration tests
+        run: go test ./...
+      - name: Static analysis
+        run: go vet ./...
+      - name: Execute native hermetic smoke path
+        shell: bash
+        run: |
+          smoke_root="${RUNNER_TEMP}/pai-native-smoke"
+          mkdir -p "$smoke_root"
+          go run . smoke -kit "$smoke_root"
       - name: Build Windows x64 executable
         shell: bash
         run: |
           mkdir -p ../../dist
           GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o ../../dist/PremiereAIHarness-Qualification.exe .
+      - name: Execute compiled Windows entrypoints
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $exe = Join-Path $env:GITHUB_WORKSPACE 'dist\PremiereAIHarness-Qualification.exe'
+          if (-not (Test-Path -LiteralPath $exe)) {
+            throw "compiled executable is missing: $exe"
+          }
+
+          & $exe version
+          if ($LASTEXITCODE -ne 0) {
+            throw "version entrypoint failed with exit code $LASTEXITCODE"
+          }
+
+          $kit = Join-Path $env:RUNNER_TEMP 'pai-compiled-exe-smoke'
+          New-Item -ItemType Directory -Path $kit -Force | Out-Null
+          & $exe smoke -kit $kit
+          if ($LASTEXITCODE -ne 0) {
+            throw "compiled smoke entrypoint failed with exit code $LASTEXITCODE"
+          }
+
+          @(
+            'CI Seller',
+            'ci@example.com',
+            '',
+            '',
+            ''
+          ) | & $exe config -kit $kit
+          if ($LASTEXITCODE -ne 0) {
+            throw "interactive config entrypoint failed with exit code $LASTEXITCODE"
+          }
+          $configPath = Join-Path $kit 'seller-config.json'
+          $config = Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($config.seller.name -ne 'CI Seller' -or $config.seller.contact -ne 'ci@example.com') {
+            throw 'generated seller-config.json did not round-trip expected UTF-8 values'
+          }
+
+          $preflightOutput = & $exe preflight -kit $kit 2>&1
+          $preflightExit = $LASTEXITCODE
+          if ($preflightExit -ne 1) {
+            throw "preflight without payloads should fail cleanly with exit code 1, got $preflightExit"
+          }
+          if (($preflightOutput | Out-String) -notmatch 'payload-manifest') {
+            throw "preflight failure did not identify the missing payload manifest: $preflightOutput"
+          }
+
+          & $exe *> $null
+          if ($LASTEXITCODE -ne 2) {
+            throw "no-argument usage path should return exit code 2, got $LASTEXITCODE"
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: PremiereAIHarness-Qualification-${{ matrix.os }}
