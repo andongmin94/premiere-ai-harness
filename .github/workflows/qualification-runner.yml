@@ -36,17 +36,22 @@ jobs:
           smoke_root="${RUNNER_TEMP}/pai-native-smoke"
           mkdir -p "$smoke_root"
           go run . smoke -kit "$smoke_root"
-      - name: Build Windows x64 executable
+      - name: Build Windows x64 kit
         shell: bash
         run: |
-          mkdir -p ../../dist
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o ../../dist/PremiereAIHarness-Qualification.exe .
-      - name: Execute compiled Windows entrypoints
+          rm -rf ../../dist/windows-kit
+          mkdir -p ../../dist/windows-kit
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o ../../dist/windows-kit/PremiereAIHarness-Qualification.exe .
+          cp windows-kit/*.cmd ../../dist/windows-kit/
+      - name: Execute compiled Windows EXE and CMD entrypoints
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $exe = Join-Path $env:GITHUB_WORKSPACE 'dist\PremiereAIHarness-Qualification.exe'
+          $sourceKit = Join-Path $env:GITHUB_WORKSPACE 'dist\windows-kit'
+          $kit = Join-Path $env:RUNNER_TEMP 'pai-compiled-windows-kit'
+          Copy-Item -LiteralPath $sourceKit -Destination $kit -Recurse -Force
+          $exe = Join-Path $kit 'PremiereAIHarness-Qualification.exe'
           if (-not (Test-Path -LiteralPath $exe)) {
             throw "compiled executable is missing: $exe"
           }
@@ -56,22 +61,37 @@ jobs:
             throw "version entrypoint failed with exit code $LASTEXITCODE"
           }
 
-          $kit = Join-Path $env:RUNNER_TEMP 'pai-compiled-exe-smoke'
-          New-Item -ItemType Directory -Path $kit -Force | Out-Null
-          & $exe smoke -kit $kit
-          if ($LASTEXITCODE -ne 0) {
-            throw "compiled smoke entrypoint failed with exit code $LASTEXITCODE"
+          $env:PAI_NONINTERACTIVE = '1'
+          $smokeCmd = Join-Path $kit '00-SMOKE.cmd'
+          $smokeOut = Join-Path $kit 'smoke.stdout.txt'
+          $smokeErr = Join-Path $kit 'smoke.stderr.txt'
+          $smoke = Start-Process -FilePath $env:ComSpec `
+            -ArgumentList @('/d', '/s', '/c', "call `"$smokeCmd`"") `
+            -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput $smokeOut `
+            -RedirectStandardError $smokeErr
+          if ($smoke.ExitCode -ne 0) {
+            $detail = ((Get-Content $smokeOut -Raw -ErrorAction SilentlyContinue) + "`n" + (Get-Content $smokeErr -Raw -ErrorAction SilentlyContinue))
+            throw "00-SMOKE.cmd failed with exit code $($smoke.ExitCode): $detail"
+          }
+          if ((Get-Content -LiteralPath $smokeOut -Raw) -notmatch 'SMOKE PASS') {
+            throw '00-SMOKE.cmd did not report SMOKE PASS'
           }
 
-          @(
-            'CI Seller',
-            'ci@example.com',
-            '',
-            '',
-            ''
-          ) | & $exe config -kit $kit
-          if ($LASTEXITCODE -ne 0) {
-            throw "interactive config entrypoint failed with exit code $LASTEXITCODE"
+          $inputPath = Join-Path $kit 'config-input.txt'
+          [System.IO.File]::WriteAllText($inputPath, "CI Seller`r`nci@example.com`r`n`r`n`r`n`r`n", [System.Text.UTF8Encoding]::new($false))
+          $configCmd = Join-Path $kit '01-CREATE-CONFIG.cmd'
+          $configOut = Join-Path $kit 'config.stdout.txt'
+          $configErr = Join-Path $kit 'config.stderr.txt'
+          $configProcess = Start-Process -FilePath $env:ComSpec `
+            -ArgumentList @('/d', '/s', '/c', "call `"$configCmd`"") `
+            -NoNewWindow -Wait -PassThru `
+            -RedirectStandardInput $inputPath `
+            -RedirectStandardOutput $configOut `
+            -RedirectStandardError $configErr
+          if ($configProcess.ExitCode -ne 0) {
+            $detail = ((Get-Content $configOut -Raw -ErrorAction SilentlyContinue) + "`n" + (Get-Content $configErr -Raw -ErrorAction SilentlyContinue))
+            throw "01-CREATE-CONFIG.cmd failed with exit code $($configProcess.ExitCode): $detail"
           }
           $configPath = Join-Path $kit 'seller-config.json'
           $config = Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -79,15 +99,16 @@ jobs:
             throw 'generated seller-config.json did not round-trip expected UTF-8 values'
           }
 
+          $preflightCmd = Join-Path $kit '02-PREFLIGHT.cmd'
           $preflightOut = Join-Path $kit 'preflight.stdout.txt'
           $preflightErr = Join-Path $kit 'preflight.stderr.txt'
-          $preflight = Start-Process -FilePath $exe `
-            -ArgumentList @('preflight', '-kit', $kit) `
+          $preflight = Start-Process -FilePath $env:ComSpec `
+            -ArgumentList @('/d', '/s', '/c', "call `"$preflightCmd`"") `
             -NoNewWindow -Wait -PassThru `
             -RedirectStandardOutput $preflightOut `
             -RedirectStandardError $preflightErr
           if ($preflight.ExitCode -ne 1) {
-            throw "preflight without payloads should fail cleanly with exit code 1, got $($preflight.ExitCode)"
+            throw "02-PREFLIGHT.cmd without payloads should fail cleanly with exit code 1, got $($preflight.ExitCode)"
           }
           $preflightText = ((Get-Content -LiteralPath $preflightOut -Raw -ErrorAction SilentlyContinue) + "`n" + (Get-Content -LiteralPath $preflightErr -Raw -ErrorAction SilentlyContinue))
           if ($preflightText -notmatch 'payload-manifest') {
@@ -109,5 +130,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: PremiereAIHarness-Qualification-${{ matrix.os }}
-          path: dist/PremiereAIHarness-Qualification.exe
+          path: dist/windows-kit
           if-no-files-found: error
