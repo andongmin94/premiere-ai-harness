@@ -1,0 +1,6 @@
+PremiereAIHarness-Qualification.exe
+_state/
+_runs/
+results/
+seller-config.json
+payload/
