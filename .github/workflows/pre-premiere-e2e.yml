@@ -1,0 +1,155 @@
+name: Pre-Premiere end-to-end
+
+on:
+  workflow_run:
+    workflows: ["Offline qualification kit"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  qualify:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+
+      - name: Download the exact offline kit produced by the successful run
+        uses: actions/download-artifact@v4
+        with:
+          name: PremiereAIHarness-Offline-Qualification-Kit
+          path: ${{ runner.temp }}/offline-kit
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Build deterministic Adobe test doubles
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'fake-adobe'
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
+
+          @'
+          package main
+          import (
+            "archive/zip"
+            "encoding/json"
+            "fmt"
+            "io"
+            "os"
+            "path/filepath"
+            "strings"
+          )
+          func statePath() string {
+            if p := os.Getenv("PAI_FAKE_UPIA_STATE"); p != "" { return p }
+            return filepath.Join(os.TempDir(), "pai-fake-upia-state.txt")
+          }
+          func pluginID(ccx string) (string, error) {
+            z, err := zip.OpenReader(ccx); if err != nil { return "", err }; defer z.Close()
+            for _, f := range z.File {
+              if strings.EqualFold(filepath.Base(f.Name), "manifest.json") {
+                r, err := f.Open(); if err != nil { return "", err }
+                b, err := io.ReadAll(io.LimitReader(r, 2<<20)); r.Close(); if err != nil { return "", err }
+                var m map[string]any; if err := json.Unmarshal(b, &m); err != nil { return "", err }
+                if id, ok := m["id"].(string); ok && id != "" { return id, nil }
+              }
+            }
+            return "", fmt.Errorf("manifest id missing")
+          }
+          func main() {
+            if len(os.Args) < 2 { os.Exit(2) }
+            switch strings.ToLower(os.Args[1]) {
+            case "/install":
+              if len(os.Args) < 3 { os.Exit(2) }
+              id, err := pluginID(os.Args[2]); if err != nil { fmt.Fprintln(os.Stderr, err); os.Exit(1) }
+              if err := os.WriteFile(statePath(), []byte(id+"\n"), 0600); err != nil { panic(err) }
+              fmt.Println("installed", id)
+            case "/list":
+              b, _ := os.ReadFile(statePath()); fmt.Print(string(b))
+            case "/remove":
+              _ = os.Remove(statePath()); fmt.Println("removed")
+            default:
+              os.Exit(2)
+            }
+          }
+          '@ | Set-Content -LiteralPath (Join-Path $root 'upia.go') -Encoding utf8
+
+          @'
+          package main
+          import "time"
+          func main() { time.Sleep(2 * time.Second) }
+          '@ | Set-Content -LiteralPath (Join-Path $root 'premiere.go') -Encoding utf8
+
+          Push-Location $root
+          try {
+            $env:GOOS='windows'; $env:GOARCH='amd64'; $env:CGO_ENABLED='0'
+            go build -trimpath -o fake-upia.exe upia.go
+            go build -trimpath -o fake-premiere.exe premiere.go
+          } finally { Pop-Location }
+          "FAKE_ADOBE_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Execute the complete pre-Premiere qualification and cleanup path
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $kit = (Get-ChildItem $env:RUNNER_TEMP/offline-kit -Recurse -Filter PremiereAIHarness-Qualification.exe | Select-Object -First 1).Directory.FullName
+          if (-not $kit) { throw 'offline kit root not found' }
+          $exe = Join-Path $kit 'PremiereAIHarness-Qualification.exe'
+          $config = [ordered]@{
+            formatVersion = 1
+            seller = [ordered]@{
+              name = 'GitHub Actions'
+              contact = 'ci@example.invalid'
+              supportUrl = ''
+              privacyUrl = ''
+              termsUrl = ''
+            }
+            qualification = [ordered]@{
+              keepProductInstalled = $false
+              launchPremiere = $true
+              preserveAllEvidence = $true
+            }
+          }
+          $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $kit 'seller-config.json') -Encoding utf8
+
+          $env:PAI_UPIA_PATH = Join-Path $env:FAKE_ADOBE_ROOT 'fake-upia.exe'
+          $env:PAI_PREMIERE_PATH = Join-Path $env:FAKE_ADOBE_ROOT 'fake-premiere.exe'
+          $env:PAI_FAKE_UPIA_STATE = Join-Path $env:RUNNER_TEMP 'fake-upia-state.txt'
+          $env:PAI_NONINTERACTIVE = '1'
+          $env:PAI_PROVIDER = 'mock'
+
+          $stdout = Join-Path $env:RUNNER_TEMP 'qualify.stdout.txt'
+          $stderr = Join-Path $env:RUNNER_TEMP 'qualify.stderr.txt'
+          $proc = Start-Process -FilePath $exe -ArgumentList @('qualify','-kit',$kit) -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          $text = ((Get-Content $stdout -Raw -ErrorAction SilentlyContinue) + "`n" + (Get-Content $stderr -Raw -ErrorAction SilentlyContinue))
+          if ($proc.ExitCode -ne 0) { throw "qualification failed ($($proc.ExitCode)):`n$text" }
+          if ($text -notmatch 'PRE-PREMIERE QUALIFICATION PASS') { throw "success marker missing:`n$text" }
+          if (-not (Get-ChildItem (Join-Path $kit 'results') -Filter '*.zip' -File -ErrorAction SilentlyContinue)) { throw 'qualification result ZIP missing' }
+
+          $cleanup = Start-Process -FilePath $exe -ArgumentList @('cleanup','-kit',$kit) -Wait -PassThru -NoNewWindow
+          if ($cleanup.ExitCode -ne 0) { throw "cleanup failed: $($cleanup.ExitCode)" }
+          $install = Join-Path $env:LOCALAPPDATA 'Programs\PremiereAIHarness'
+          if (Test-Path $install) { throw "owned install directory remained after cleanup: $install" }
+          if (Test-Path $env:PAI_FAKE_UPIA_STATE) { throw 'fake UPIA still reports installed plugin after cleanup' }
+
+          New-Item -ItemType Directory -Path e2e-results -Force | Out-Null
+          Copy-Item $stdout e2e-results/qualify.stdout.txt
+          Copy-Item $stderr e2e-results/qualify.stderr.txt
+          Copy-Item (Join-Path $kit 'results\*.zip') e2e-results -ErrorAction SilentlyContinue
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pre-premiere-e2e-results
+          path: e2e-results
+          if-no-files-found: warn
+          retention-days: 14
