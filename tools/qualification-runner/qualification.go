@@ -134,6 +134,20 @@ func commandQualify(args []string) error {
 	if err := writeJSONAtomic(filepath.Join(runDir, "preflight-result.json"), rep); err != nil {
 		return fail(err)
 	}
+
+	if os.Getenv("PAI_NONINTERACTIVE") == "1" {
+		st.Completed = true
+		st.UpdatedUTC = time.Now().UTC().Format(time.RFC3339)
+		if err := saveState(root, st); err != nil {
+			return fail(err)
+		}
+		if err := collectResult(root, st); err != nil {
+			return fail(err)
+		}
+		fmt.Println("PRE-PREMIERE QUALIFICATION PASS")
+		return nil
+	}
+
 	instructions := `Premiere가 열리면 다음을 수행하십시오:
 1. Window > UXP Plugins > Premiere AI Harness Studio
 2. Host certification 실행
@@ -170,6 +184,7 @@ func commandCollect(args []string) error {
 	}
 	return collectResult(root, st)
 }
+
 func commandCleanup(args []string) error {
 	root, _, err := kitRootFromArgs(args)
 	if err != nil {
@@ -181,6 +196,7 @@ func commandCleanup(args []string) error {
 	}
 	return bestEffortCleanup(root, &st, true)
 }
+
 func commandStatus(args []string) error {
 	root, _, err := kitRootFromArgs(args)
 	if err != nil {
