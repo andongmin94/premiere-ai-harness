@@ -2,7 +2,7 @@ name: Qualification runner CI
 
 on:
   push:
-  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -21,8 +21,8 @@ jobs:
       run:
         working-directory: tools/qualification-runner
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.22.x"
           cache-dependency-path: tools/qualification-runner/go.mod
@@ -127,7 +127,7 @@ jobs:
           if ((Get-Content -LiteralPath $usageOut -Raw) -notmatch 'Commands:') {
             throw 'no-argument usage path did not print command help'
           }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: PremiereAIHarness-Qualification-${{ matrix.os }}
           path: dist/windows-kit

@@ -1,0 +1,35 @@
+name: Product CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run verify
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'windows-latest'
+        with:
+          name: PremiereAIHarness-Core-Windows
+          path: |
+            dist/PremiereAIHarness-Core-0.1.0.ccx
+            dist/PremiereAIHarness-Core-0.1.0.ccx.sha256
+            dist/PremiereAIHarness-Core-0.1.0.ccx.manifest.json
+          if-no-files-found: error

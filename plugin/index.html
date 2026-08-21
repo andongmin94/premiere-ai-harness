@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Premiere AI Harness</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="lib/transcript.js"></script>
+  <script src="lib/planner.js"></script>
+  <script src="lib/premiere-adapter.js"></script>
+  <script src="index.js"></script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Premiere AI Harness</h1>
+      <p>대사 중심 영상의 안전한 러프컷</p>
+    </div>
+    <span class="version">0.1.0</span>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>1. 원본 선택</h2>
+      <p class="help">프로젝트 패널에서 일반 미디어 클립 하나를 선택합니다. 기존 시퀀스는 수정하지 않습니다.</p>
+      <button id="inspect">선택 클립 검사</button>
+      <div id="selection-info" class="info-line">아직 확인하지 않았습니다.</div>
+    </section>
+
+    <section class="card">
+      <h2>2. 전사문</h2>
+      <div class="button-row">
+        <button id="load-premiere">Premiere 전사문 불러오기</button>
+      </div>
+      <label for="transcript-input">또는 SRT · WebVTT · JSON 붙여넣기</label>
+      <textarea id="transcript-input" spellcheck="false" placeholder="1&#10;00:00:00,000 --> 00:00:03,000&#10;안녕하세요. 오늘은...&#10;"></textarea>
+      <button id="analyze-pasted" class="secondary">붙여넣은 전사 분석</button>
+    </section>
+
+    <section class="card">
+      <h2>3. 편집안 검토</h2>
+      <label for="preset">편집 강도</label>
+      <select id="preset">
+        <option value="conservative">보수적</option>
+        <option value="balanced" selected>균형</option>
+        <option value="tight">타이트</option>
+      </select>
+      <div id="candidate-list" class="candidate-list">전사문을 분석하면 삭제 후보가 표시됩니다.</div>
+      <div id="plan-stats" class="info-line"></div>
+    </section>
+
+    <section class="card accent">
+      <h2>4. 새 러프컷 생성</h2>
+      <p class="help">승인한 삭제 구간을 제외한 하드 바운더리 서브클립으로 새 시퀀스를 만듭니다.</p>
+      <button id="apply" disabled>새 러프컷 시퀀스 생성</button>
+    </section>
+  </main>
+
+  <footer id="status" data-kind="info"></footer>
+</body>
+</html>

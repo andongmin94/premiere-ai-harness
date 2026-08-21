@@ -1,0 +1,55 @@
+"use strict";
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const transcript = require("../plugin/lib/transcript.js");
+
+test("parses SRT and normalizes caption markup", () => {
+  const segments = transcript.parseTranscript(`1\n00:00:00,000 --> 00:00:01,250\n<b>안녕하세요</b> &amp; 반갑습니다\n\n2\n00:00:02,000 --> 00:00:03,500\n두 번째 문장`);
+  assert.equal(segments.length, 2);
+  assert.deepEqual({ start: segments[0].start, end: segments[0].end, text: segments[0].text }, { start: 0, end: 1.25, text: "안녕하세요 & 반갑습니다" });
+  assert.equal(segments[1].id, "seg-00002");
+  assert.equal(Object.isFrozen(segments), true);
+});
+
+test("parses WebVTT with cue identifiers and settings", () => {
+  const segments = transcript.parseTranscript(`WEBVTT\n\nintro\n00:00.000 --> 00:01.500 align:start\nHello world\n\n00:02.000 --> 00:03.250\nSecond cue`, "vtt");
+  assert.deepEqual(segments.map(({ start, end, text }) => ({ start, end, text })), [
+    { start: 0, end: 1.5, text: "Hello world" },
+    { start: 2, end: 3.25, text: "Second cue" },
+  ]);
+});
+
+test("finds the most transcript-like nested JSON array", () => {
+  const segments = transcript.parseTranscriptJson({
+    metadata: [{ start: 0, end: 1, value: "not transcript" }],
+    transcript: {
+      segments: [
+        { startTime: { seconds: 0.2 }, endTime: { seconds: 1.3 }, text: "첫 문장", speakerName: "A" },
+        { startTime: "00:01.500", endTime: "00:02.700", words: [{ word: "둘째" }, { word: "문장" }] },
+      ],
+    },
+  });
+  assert.equal(segments.length, 2);
+  assert.equal(segments[0].speaker, "A");
+  assert.equal(segments[1].text, "둘째 문장");
+});
+
+test("rejects empty, malformed, and invalid timing input", () => {
+  assert.throws(() => transcript.parseTranscript(""), /비어/);
+  assert.throws(() => transcript.parseTranscript("not a transcript"), /형식/);
+  assert.throws(() => transcript.parseSrt("1\n00:00:02,000 --> 00:00:01,000\nwrong"), /종료 시간/);
+  assert.throws(() => transcript.normalizeSegments([{ start: -1, end: 1, text: "bad" }]), /시간/);
+  assert.throws(() => transcript.normalizeSegments([{ start: 0, end: 1, text: "" }]), /텍스트/);
+});
+
+test("accepts numeric seconds and clock strings in generic JSON", () => {
+  const segments = transcript.parseTranscript(JSON.stringify({ segments: [
+    { in: "0.125", out: "1.500", caption: "one" },
+    { begin: "00:01.750", finish: "00:02.250", transcript: "two" },
+  ] }));
+  assert.deepEqual(segments.map(({ start, end }) => ({ start, end })), [
+    { start: 0.125, end: 1.5 },
+    { start: 1.75, end: 2.25 },
+  ]);
+});
