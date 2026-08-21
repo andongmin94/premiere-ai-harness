@@ -11,8 +11,26 @@ import (
 	"time"
 )
 
+func regularFileFromEnv(name string) string {
+	p := strings.TrimSpace(os.Getenv(name))
+	if p == "" {
+		return ""
+	}
+	p = filepath.Clean(p)
+	if st, err := os.Stat(p); err == nil && st.Mode().IsRegular() {
+		return p
+	}
+	return ""
+}
+
 func findUPIA() string {
-	candidates := []string{filepath.Join(os.Getenv("ProgramFiles"), "Common Files", "Adobe", "Adobe Desktop Common", "RemoteComponents", "UPI", "UnifiedPluginInstallerAgent", "UnifiedPluginInstallerAgent.exe"), filepath.Join(os.Getenv("ProgramFiles(x86)"), "Common Files", "Adobe", "Adobe Desktop Common", "RemoteComponents", "UPI", "UnifiedPluginInstallerAgent", "UnifiedPluginInstallerAgent.exe")}
+	if p := regularFileFromEnv("PAI_UPIA_PATH"); p != "" {
+		return p
+	}
+	candidates := []string{
+		filepath.Join(os.Getenv("ProgramFiles"), "Common Files", "Adobe", "Adobe Desktop Common", "RemoteComponents", "UPI", "UnifiedPluginInstallerAgent", "UnifiedPluginInstallerAgent.exe"),
+		filepath.Join(os.Getenv("ProgramFiles(x86)"), "Common Files", "Adobe", "Adobe Desktop Common", "RemoteComponents", "UPI", "UnifiedPluginInstallerAgent", "UnifiedPluginInstallerAgent.exe"),
+	}
 	for _, p := range candidates {
 		if st, err := os.Stat(p); err == nil && st.Mode().IsRegular() {
 			return p
@@ -20,7 +38,11 @@ func findUPIA() string {
 	}
 	return ""
 }
+
 func findPremiere() string {
+	if p := regularFileFromEnv("PAI_PREMIERE_PATH"); p != "" {
+		return p
+	}
 	roots := []string{filepath.Join(os.Getenv("ProgramFiles"), "Adobe")}
 	var cands []string
 	for _, root := range roots {
@@ -35,6 +57,7 @@ func findPremiere() string {
 	}
 	return ""
 }
+
 func installCCX(upia, ccx, pluginID string) error {
 	if upia == "" {
 		return errors.New("UPIA path is empty")
@@ -53,6 +76,7 @@ func installCCX(upia, ccx, pluginID string) error {
 	}
 	return nil
 }
+
 func uninstallCCX(upia, pluginID string) error {
 	if upia == "" || pluginID == "" {
 		return nil
@@ -65,6 +89,7 @@ func uninstallCCX(upia, pluginID string) error {
 	}
 	return nil
 }
+
 func startHelper(installDir, dataDir, runDir string) (ProcessRecord, error) {
 	node := filepath.Join(installDir, "runtime", "node", "node.exe")
 	entry := filepath.Join(installDir, "helper", "src", "server.js")
@@ -79,10 +104,15 @@ func startHelper(installDir, dataDir, runDir string) (ProcessRecord, error) {
 	cmd.Stderr = log
 	cmd.SysProcAttr = hiddenProcessAttrs()
 	env := minimalEnv()
-	env = append(env, "PAI_DATA_DIR="+dataDir, "PAI_FFMPEG_PATH="+filepath.Join(installDir, "runtime", "ffmpeg", "ffmpeg.exe"), "PAI_FFPROBE_PATH="+filepath.Join(installDir, "runtime", "ffmpeg", "ffprobe.exe"), "PAI_CODEX_PATH="+filepath.Join(installDir, "runtime", "codex.exe"))
+	env = append(env,
+		"PAI_DATA_DIR="+dataDir,
+		"PAI_FFMPEG_PATH="+filepath.Join(installDir, "runtime", "ffmpeg", "ffmpeg.exe"),
+		"PAI_FFPROBE_PATH="+filepath.Join(installDir, "runtime", "ffmpeg", "ffprobe.exe"),
+		"PAI_CODEX_PATH="+filepath.Join(installDir, "runtime", "codex.exe"),
+	)
 	cmd.Env = env
 	if err := cmd.Start(); err != nil {
-		log.Close()
+		_ = log.Close()
 		return ProcessRecord{}, err
 	}
 	go func() { _ = cmd.Wait(); _ = log.Close() }()
@@ -92,11 +122,13 @@ func startHelper(installDir, dataDir, runDir string) (ProcessRecord, error) {
 	}
 	return ProcessRecord{PID: cmd.Process.Pid, Executable: node, StartedUTC: time.Now().UTC().Format(time.RFC3339), Kind: "companion"}, nil
 }
+
 func launchPremiere(path string) error {
 	cmd := exec.Command(path)
 	cmd.SysProcAttr = hiddenProcessAttrs()
 	return cmd.Start()
 }
+
 func minimalEnv() []string {
 	keys := []string{"SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "ProgramFiles", "ProgramFiles(x86)", "PROGRAMDATA"}
 	var out []string
