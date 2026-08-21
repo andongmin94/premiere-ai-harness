@@ -1,0 +1,190 @@
+name: Premiere host qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      timeout_minutes:
+        description: Maximum time allowed for the interactive Premiere checks
+        required: false
+        default: '90'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: premiere-host-qualification
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: [self-hosted, windows, x64, premiere-ai-harness]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Require an interactive desktop and exact successful offline-kit receipt
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-Process explorer -ErrorAction SilentlyContinue)) {
+            throw 'The self-hosted runner must be started with run.cmd in the logged-in desktop session, not as a Windows service.'
+          }
+          $receiptPath = Join-Path $env:GITHUB_WORKSPACE 'reports\offline-kit-ci.json'
+          if (-not (Test-Path -LiteralPath $receiptPath)) { throw 'offline-kit success receipt is missing' }
+          $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+          if ($receipt.status -ne 'PASS' -or -not $receipt.runId) { throw 'offline-kit receipt is not a PASS result' }
+          "OFFLINE_RUN_ID=$($receipt.runId)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Download the exact verified offline kit
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'pai-premiere-host-kit'
+          Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
+          gh run download $env:OFFLINE_RUN_ID --repo $env:GITHUB_REPOSITORY --name PremiereAIHarness-Offline-Qualification-Kit --dir $root
+          $exe = Get-ChildItem $root -Recurse -Filter PremiereAIHarness-Qualification.exe -File | Select-Object -First 1
+          if (-not $exe) { throw 'qualification executable is missing from downloaded offline kit' }
+          "KIT_ROOT=$($exe.Directory.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Create technical qualification config and run preflight
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $kit = $env:KIT_ROOT
+          $config = [ordered]@{
+            formatVersion = 1
+            seller = [ordered]@{
+              name = 'Premiere AI Harness host qualification'
+              contact = 'ci@example.invalid'
+              supportUrl = ''
+              privacyUrl = ''
+              termsUrl = ''
+            }
+            qualification = [ordered]@{
+              keepProductInstalled = $false
+              launchPremiere = $true
+              preserveAllEvidence = $true
+            }
+          }
+          $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $kit 'seller-config.json') -Encoding utf8
+          $exe = Join-Path $kit 'PremiereAIHarness-Qualification.exe'
+          & $exe preflight -kit $kit
+          if ($LASTEXITCODE -ne 0) { throw "host preflight failed: $LASTEXITCODE" }
+
+      - name: Run interactive Premiere qualification
+        shell: pwsh
+        env:
+          REQUESTED_TIMEOUT: ${{ inputs.timeout_minutes }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $kit = $env:KIT_ROOT
+          $exe = Join-Path $kit 'PremiereAIHarness-Qualification.exe'
+          $desktop = [Environment]::GetFolderPath('Desktop')
+          $pass = Join-Path $desktop 'PAI-HOST-TEST-PASS.signal'
+          $fail = Join-Path $desktop 'PAI-HOST-TEST-FAIL.signal'
+          $passCmd = Join-Path $desktop 'PAI-MARK-HOST-TEST-PASS.cmd'
+          $failCmd = Join-Path $desktop 'PAI-MARK-HOST-TEST-FAIL.cmd'
+          Remove-Item $pass,$fail,$passCmd,$failCmd -Force -ErrorAction SilentlyContinue
+          "@echo off`r`n>\"$pass\" echo PASS`r`n" | Set-Content -LiteralPath $passCmd -Encoding ascii
+          "@echo off`r`n>\"$fail\" echo FAIL`r`n" | Set-Content -LiteralPath $failCmd -Encoding ascii
+
+          $stdout = Join-Path $env:RUNNER_TEMP 'premiere-qualification.stdout.txt'
+          $stderr = Join-Path $env:RUNNER_TEMP 'premiere-qualification.stderr.txt'
+          $psi = [Diagnostics.ProcessStartInfo]::new()
+          $psi.FileName = $exe
+          $psi.ArgumentList.Add('qualify')
+          $psi.ArgumentList.Add('-kit')
+          $psi.ArgumentList.Add($kit)
+          $psi.UseShellExecute = $false
+          $psi.RedirectStandardInput = $true
+          $psi.RedirectStandardOutput = $true
+          $psi.RedirectStandardError = $true
+          $psi.CreateNoWindow = $false
+          $process = [Diagnostics.Process]::new()
+          $process.StartInfo = $psi
+          if (-not $process.Start()) { throw 'failed to start qualification process' }
+
+          $outTask = $process.StandardOutput.ReadToEndAsync()
+          $errTask = $process.StandardError.ReadToEndAsync()
+          $minutes = 90
+          [void][int]::TryParse($env:REQUESTED_TIMEOUT, [ref]$minutes)
+          if ($minutes -lt 10) { $minutes = 10 }
+          if ($minutes -gt 110) { $minutes = 110 }
+          $deadline = [DateTime]::UtcNow.AddMinutes($minutes)
+
+          @"
+          Premiere AI Harness host qualification is now running.
+
+          Complete the checks shown in the Premiere panel:
+          - host certification
+          - Local provider self-test
+          - multicam
+          - automatic B-roll
+          - MOGRT captions
+          - dialogue/music mix
+          - export and render QA
+          - save, close, reopen, and rollback
+
+          After all checks pass, double-click:
+          $passCmd
+
+          On any failure, double-click:
+          $failCmd
+          "@ | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
+          try {
+            while (-not $process.HasExited -and [DateTime]::UtcNow -lt $deadline) {
+              if (Test-Path -LiteralPath $fail) {
+                try { $process.Kill($true) } catch { }
+                throw 'operator marked the Premiere host qualification as failed'
+              }
+              if (Test-Path -LiteralPath $pass) {
+                $process.StandardInput.WriteLine('')
+                $process.StandardInput.Flush()
+                break
+              }
+              Start-Sleep -Seconds 2
+            }
+            if (-not $process.WaitForExit(300000)) {
+              try { $process.Kill($true) } catch { }
+              throw 'qualification runner did not finish after the PASS signal'
+            }
+            $stdoutText = $outTask.GetAwaiter().GetResult()
+            $stderrText = $errTask.GetAwaiter().GetResult()
+            [IO.File]::WriteAllText($stdout, $stdoutText, [Text.UTF8Encoding]::new($false))
+            [IO.File]::WriteAllText($stderr, $stderrText, [Text.UTF8Encoding]::new($false))
+            if ($process.ExitCode -ne 0) {
+              throw "qualification runner failed ($($process.ExitCode)):`n$stdoutText`n$stderrText"
+            }
+            $results = Get-ChildItem (Join-Path $kit 'results') -Filter '*.zip' -File -ErrorAction SilentlyContinue
+            if (-not $results) { throw 'qualification result ZIP was not produced' }
+          } finally {
+            Remove-Item $pass,$fail,$passCmd,$failCmd -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Cleanup only runner-owned installation and collect evidence
+        if: always()
+        shell: pwsh
+        run: |
+          $kit = $env:KIT_ROOT
+          if ($kit) {
+            $exe = Join-Path $kit 'PremiereAIHarness-Qualification.exe'
+            if (Test-Path -LiteralPath $exe) { & $exe cleanup -kit $kit }
+          }
+          New-Item -ItemType Directory -Path host-evidence -Force | Out-Null
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'premiere-qualification.*.txt') host-evidence -ErrorAction SilentlyContinue
+          if ($kit) { Copy-Item (Join-Path $kit 'results\*.zip') host-evidence -ErrorAction SilentlyContinue }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Premiere-host-qualification-evidence
+          path: host-evidence
+          if-no-files-found: warn
+          retention-days: 30
