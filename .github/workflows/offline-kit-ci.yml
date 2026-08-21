@@ -1,0 +1,257 @@
+name: Offline qualification kit
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: offline-qualification-kit-main
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 22.23.2
+  CODEX_VERSION: 0.147.0
+  FFMPEG_WINGET_MANIFEST: https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/b/BtbN/FFmpeg/LGPL/8/0/8.0.1-20260228/BtbN.FFmpeg.LGPL.8.0.installer.yaml
+
+jobs:
+  build-and-exercise:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+          cache-dependency-path: tools/qualification-runner/go.mod
+
+      - name: Verify full source tree
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path package.json)) { throw 'package.json is missing' }
+          if (-not (Test-Path plugin)) { throw 'plugin directory is missing' }
+          if (-not (Test-Path helper)) { throw 'helper directory is missing' }
+          if (Test-Path package-lock.json) {
+            npm ci --ignore-scripts --no-audit --no-fund
+          } else {
+            npm install --ignore-scripts --no-audit --no-fund
+          }
+          npm run verify
+          if (Test-Path helper/package.json) {
+            Push-Location helper
+            try {
+              if (Test-Path package-lock.json) {
+                npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+              } else {
+                npm install --omit=dev --ignore-scripts --no-audit --no-fund
+              }
+            } finally { Pop-Location }
+          }
+
+      - name: Build product release artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = Get-Content package.json -Raw | ConvertFrom-Json
+          if ($package.scripts.release) {
+            npm run release
+          } else {
+            Write-Host 'No release script; packaging Studio CCX directly from plugin directory.'
+          }
+
+      - name: Assemble pinned offline payloads
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          $out = Join-Path $env:RUNNER_TEMP 'pai-offline-kit'
+          $payload = Join-Path $out 'payload'
+          Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $payload -Force | Out-Null
+
+          function Get-Sha256([string]$Path) {
+            return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+          }
+          function Assert-Sha256([string]$Path, [string]$Expected) {
+            $actual = Get-Sha256 $Path
+            if ($actual -ne $Expected.ToLowerInvariant()) {
+              throw "SHA-256 mismatch for $Path. expected=$Expected actual=$actual"
+            }
+          }
+          function Download([string]$Uri, [string]$Path) {
+            Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $Path
+            if (-not (Test-Path -LiteralPath $Path)) { throw "download missing: $Uri" }
+          }
+
+          # Node.js: verify against the official SHASUMS file.
+          $nodeName = "node-v$env:NODE_VERSION-win-x64.zip"
+          $nodeUrl = "https://nodejs.org/dist/v$env:NODE_VERSION/$nodeName"
+          $nodeSums = Join-Path $out 'node-SHASUMS256.txt'
+          Download "https://nodejs.org/dist/v$env:NODE_VERSION/SHASUMS256.txt" $nodeSums
+          $line = Get-Content $nodeSums | Where-Object { $_ -match "\s+$([regex]::Escape($nodeName))$" } | Select-Object -First 1
+          if (-not $line) { throw "official Node SHASUMS has no $nodeName" }
+          $nodeSha = ($line -split '\s+')[0]
+          $nodeZip = Join-Path $payload 'node-win-x64.zip'
+          Download $nodeUrl $nodeZip
+          Assert-Sha256 $nodeZip $nodeSha
+
+          # FFmpeg: resolve one exact x64 LGPL archive from the reviewed Winget manifest,
+          # then verify the installer hash published in that manifest.
+          $ffManifest = Join-Path $out 'ffmpeg-winget.yaml'
+          Download $env:FFMPEG_WINGET_MANIFEST $ffManifest
+          $lines = Get-Content $ffManifest
+          $ffUrl = $null
+          $ffSha = $null
+          $insideX64 = $false
+          foreach ($l in $lines) {
+            if ($l -match '^\s*-?\s*Architecture:\s*x64\s*$') { $insideX64 = $true; continue }
+            if ($insideX64 -and $l -match '^\s*InstallerUrl:\s*(\S+)\s*$') { $ffUrl = $Matches[1]; continue }
+            if ($insideX64 -and $l -match '^\s*InstallerSha256:\s*([A-Fa-f0-9]{64})\s*$') { $ffSha = $Matches[1]; break }
+          }
+          if (-not $ffUrl -or -not $ffSha) {
+            # Some manifests contain only one installer and omit Architecture.
+            foreach ($l in $lines) {
+              if (-not $ffUrl -and $l -match '^\s*InstallerUrl:\s*(\S+)\s*$') { $ffUrl = $Matches[1] }
+              if (-not $ffSha -and $l -match '^\s*InstallerSha256:\s*([A-Fa-f0-9]{64})\s*$') { $ffSha = $Matches[1] }
+            }
+          }
+          if (-not $ffUrl -or -not $ffSha) { throw 'unable to resolve FFmpeg URL/SHA from Winget manifest' }
+          $ffOriginal = Join-Path $out ([IO.Path]::GetFileName(([uri]$ffUrl).AbsolutePath))
+          Download $ffUrl $ffOriginal
+          Assert-Sha256 $ffOriginal $ffSha
+          $ffExtract = Join-Path $out 'ffmpeg-extracted'
+          Expand-Archive -LiteralPath $ffOriginal -DestinationPath $ffExtract -Force
+          $ffmpegExe = Get-ChildItem $ffExtract -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          $ffprobeExe = Get-ChildItem $ffExtract -Recurse -Filter ffprobe.exe | Select-Object -First 1
+          if (-not $ffmpegExe -or -not $ffprobeExe) { throw 'FFmpeg archive lacks ffmpeg.exe/ffprobe.exe' }
+          $ffStage = Join-Path $out 'ffmpeg-runtime'
+          New-Item -ItemType Directory $ffStage -Force | Out-Null
+          Copy-Item $ffmpegExe.FullName (Join-Path $ffStage 'ffmpeg.exe')
+          Copy-Item $ffprobeExe.FullName (Join-Path $ffStage 'ffprobe.exe')
+          Compress-Archive -Path (Join-Path $ffStage '*') -DestinationPath (Join-Path $payload 'ffmpeg-win-x64.zip') -CompressionLevel Optimal
+
+          # Codex: use a fixed release tag and select the Windows x64 asset from GitHub's release metadata.
+          $release = Invoke-RestMethod -Headers @{ 'User-Agent' = 'PremiereAIHarness-CI' } -Uri "https://api.github.com/repos/openai/codex/releases/tags/rust-v$env:CODEX_VERSION"
+          $asset = $release.assets | Where-Object {
+            $_.name -match 'x86_64-pc-windows-msvc' -and $_.name -notmatch '\.(sha256|sig|pem)$'
+          } | Sort-Object @{Expression={ if ($_.name -match '\.exe$') {0} elseif ($_.name -match '\.zip$') {1} else {2} }} | Select-Object -First 1
+          if (-not $asset) { throw "Codex release rust-v$env:CODEX_VERSION has no Windows x64 asset" }
+          $codexDownload = Join-Path $out $asset.name
+          Download $asset.browser_download_url $codexDownload
+          $codexExe = $null
+          if ($codexDownload.EndsWith('.exe', [StringComparison]::OrdinalIgnoreCase)) {
+            $codexExe = $codexDownload
+          } elseif ($codexDownload.EndsWith('.zip', [StringComparison]::OrdinalIgnoreCase)) {
+            $codexExtract = Join-Path $out 'codex-extracted'
+            Expand-Archive -LiteralPath $codexDownload -DestinationPath $codexExtract -Force
+            $codexExe = (Get-ChildItem $codexExtract -Recurse -Filter '*.exe' | Where-Object { $_.Name -match '^codex' } | Select-Object -First 1).FullName
+          }
+          if (-not $codexExe) { throw "unsupported Codex asset format: $($asset.name)" }
+          Copy-Item $codexExe (Join-Path $payload 'codex.exe')
+
+          # Product source archive, excluding build outputs, git metadata and root node_modules.
+          $sourceStage = Join-Path $out 'source-stage'
+          New-Item -ItemType Directory $sourceStage -Force | Out-Null
+          $exclude = @('.git', 'node_modules', 'dist', 'release', 'coverage', '.bootstrap', '.import-work', 'source-archive')
+          Get-ChildItem $env:GITHUB_WORKSPACE -Force | Where-Object { $exclude -notcontains $_.Name } | ForEach-Object {
+            Copy-Item $_.FullName -Destination $sourceStage -Recurse -Force
+          }
+          Compress-Archive -Path (Join-Path $sourceStage '*') -DestinationPath (Join-Path $payload 'product-source.zip') -CompressionLevel Optimal
+
+          # Find a Studio CCX created by the product release. If no release CCX exists,
+          # create a deterministic technical-candidate CCX from plugin/ for CI only.
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $studio = $null
+          $ccxCandidates = Get-ChildItem $env:GITHUB_WORKSPACE -Recurse -Filter '*.ccx' -File -ErrorAction SilentlyContinue
+          foreach ($candidate in $ccxCandidates) {
+            try {
+              $zip = [IO.Compression.ZipFile]::OpenRead($candidate.FullName)
+              try {
+                $manifestEntry = $zip.Entries | Where-Object { [IO.Path]::GetFileName($_.FullName) -eq 'manifest.json' } | Select-Object -First 1
+                if ($manifestEntry) {
+                  $reader = [IO.StreamReader]::new($manifestEntry.Open())
+                  try { $manifest = ($reader.ReadToEnd() | ConvertFrom-Json) } finally { $reader.Dispose() }
+                  if ([string]$manifest.id -match 'studio') { $studio = $candidate.FullName; break }
+                }
+              } finally { $zip.Dispose() }
+            } catch { }
+          }
+          if (-not $studio) {
+            if (-not (Test-Path plugin/manifest.json)) { throw 'no Studio CCX and no plugin/manifest.json' }
+            $candidate = Join-Path $out 'studio-technical-candidate.zip'
+            Compress-Archive -Path (Join-Path $env:GITHUB_WORKSPACE 'plugin\*') -DestinationPath $candidate -CompressionLevel Optimal
+            $studio = $candidate
+          }
+          Copy-Item $studio (Join-Path $payload 'studio.ccx')
+
+          # Build the native runner and copy the verified Windows wrappers.
+          Push-Location tools/qualification-runner
+          try {
+            $env:GOOS = 'windows'; $env:GOARCH = 'amd64'; $env:CGO_ENABLED = '0'
+            go build -trimpath -o (Join-Path $out 'PremiereAIHarness-Qualification.exe') .
+          } finally { Pop-Location }
+          Copy-Item tools/qualification-runner/windows-kit/*.cmd $out
+
+          $roles = [ordered]@{
+            'node-runtime' = 'payload/node-win-x64.zip'
+            'ffmpeg-runtime' = 'payload/ffmpeg-win-x64.zip'
+            'codex-runtime' = 'payload/codex.exe'
+            'product-source' = 'payload/product-source.zip'
+            'studio-ccx' = 'payload/studio.ccx'
+          }
+          $entries = @()
+          foreach ($role in $roles.Keys) {
+            $relative = $roles[$role].Replace('\\','/')
+            $path = Join-Path $out $roles[$role]
+            $entries += [ordered]@{
+              path = $relative
+              sha256 = Get-Sha256 $path
+              size = (Get-Item $path).Length
+              role = $role
+              required = $true
+            }
+          }
+          $manifest = [ordered]@{
+            formatVersion = 1
+            runnerVersion = '1.0.0'
+            productVersion = '3.3.0'
+            createdUtc = [DateTime]::UtcNow.ToString('o')
+            files = $entries
+          }
+          $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $out 'payload-manifest.json') -Encoding utf8
+
+          # Exercise all bundled executables before publishing the artifact.
+          & (Join-Path $out 'PremiereAIHarness-Qualification.exe') selftest -kit $out
+          if ($LASTEXITCODE -ne 0) { throw "qualification selftest failed: $LASTEXITCODE" }
+
+          $runtimeTest = Join-Path $out '_runtime-test'
+          Expand-Archive -LiteralPath (Join-Path $payload 'node-win-x64.zip') -DestinationPath (Join-Path $runtimeTest 'node') -Force
+          Expand-Archive -LiteralPath (Join-Path $payload 'ffmpeg-win-x64.zip') -DestinationPath (Join-Path $runtimeTest 'ffmpeg') -Force
+          $nodeExe = (Get-ChildItem (Join-Path $runtimeTest 'node') -Recurse -Filter node.exe | Select-Object -First 1).FullName
+          & $nodeExe --version
+          & (Join-Path $runtimeTest 'ffmpeg\ffmpeg.exe') -version
+          & (Join-Path $runtimeTest 'ffmpeg\ffprobe.exe') -version
+          & (Join-Path $payload 'codex.exe') --version
+          if ($LASTEXITCODE -ne 0) { throw 'one of the bundled runtime executables failed to start' }
+          Remove-Item $runtimeTest -Recurse -Force
+
+          "OFFLINE_KIT=$out" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Upload verified offline qualification kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: PremiereAIHarness-Offline-Qualification-Kit
+          path: ${{ env.OFFLINE_KIT }}
+          if-no-files-found: error
+          retention-days: 14
