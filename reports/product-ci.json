@@ -1,23 +1,23 @@
 {
   "formatVersion": 1,
-  "status": "FAIL",
+  "status": "PASS",
   "version": "0.3.1",
-  "verifiedCommit": "dc06380c14ba2650efa26d9207621d59da660b24",
-  "runId": 32553307180,
+  "verifiedCommit": "c5e40703f4e24a9c8b4c3b936b2c1ec43dd19905",
+  "runId": 32553459471,
   "runAttempt": 1,
-  "verifyResult": "failure",
-  "compareResult": "skipped",
+  "verifyResult": "success",
+  "compareResult": "success",
   "runners": [
     "ubuntu-latest",
     "windows-latest"
   ],
-  "crossPlatformReproducible": false,
+  "crossPlatformReproducible": true,
   "artifacts": [
     "PremiereAIHarness-Core-Linux",
     "PremiereAIHarness-Core-Windows"
   ],
-  "packageKind": null,
+  "packageKind": "unsigned-uxp-source-directory",
   "installable": false,
-  "treeSha256": null,
-  "recordedAt": "2026-08-22T05:03:17.620Z"
+  "treeSha256": "3eddd099e34ebf416c51374d49271d608e8ae297c72d9b876d4a2b78c2b8ace3",
+  "recordedAt": "2026-08-22T05:07:02.750Z"
 }
