@@ -24,9 +24,9 @@ Machine-readable successful-run receipts are written to:
 - `reports/offline-kit-ci.json`
 - `reports/pre-premiere-e2e.json`
 
-## Remaining host gate
+## Remaining real Premiere gate
 
-GitHub-hosted runners do not include Adobe Premiere Pro, Creative Cloud Desktop, or a logged-in interactive Adobe session. The remaining gate is the exact Studio artifact running inside real Premiere Pro:
+GitHub-hosted runners do not include Adobe Premiere Pro, Creative Cloud Desktop, or a logged-in interactive Adobe session. The remaining gate is the exact packaged artifact running inside real Premiere Pro:
 
 - UXP panel load
 - host certification
@@ -37,4 +37,4 @@ GitHub-hosted runners do not include Adobe Premiere Pro, Creative Cloud Desktop,
 - export and render QA
 - save, reopen, and rollback behavior
 
-A private interactive Windows runner workflow will be enabled only after its exact artifact and cleanup path are pinned to a successful offline-kit receipt.
+Self-hosted GitHub Actions runners are intentionally not used. Final Adobe-host validation will be performed as a one-time local test from inside Premiere with the packaged CCX. It must not require a background GitHub runner, a Windows service, a repository checkout, or a persistent connection to GitHub.
