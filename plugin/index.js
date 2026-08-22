@@ -244,7 +244,7 @@
 
     async function confirmQualificationPersistence() {
       await withBusy(async function () {
-        qualification.confirmPersistence();
+        await qualification.confirmPersistence();
         view.setStatus("저장·종료·재실행 후 러프컷 시퀀스 유지를 확인했습니다.", "success");
       });
     }
