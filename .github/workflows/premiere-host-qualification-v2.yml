@@ -1,0 +1,156 @@
+name: Premiere host qualification (verified gate)
+
+on:
+  workflow_dispatch:
+    inputs:
+      timeout_minutes:
+        description: Maximum time for the interactive Premiere checks
+        required: false
+        default: '90'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: premiere-host-qualification
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: [self-hosted, windows, x64, premiere-ai-harness]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Require an interactive desktop and exact verified artifact receipts
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-Process explorer -ErrorAction SilentlyContinue)) {
+            throw 'Start the self-hosted runner with run.cmd in the logged-in desktop session. Do not install it as a Windows service.'
+          }
+          $offline = Get-Content -LiteralPath 'reports\offline-kit-ci.json' -Raw | ConvertFrom-Json
+          $gate = Get-Content -LiteralPath 'reports\host-gate-ci.json' -Raw | ConvertFrom-Json
+          if ($offline.status -ne 'PASS' -or -not $offline.runId) { throw 'offline-kit PASS receipt is missing' }
+          if ($gate.status -ne 'PASS' -or -not $gate.runId) { throw 'host-gate PASS receipt is missing' }
+          "OFFLINE_RUN_ID=$($offline.runId)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "HOST_GATE_RUN_ID=$($gate.runId)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Download exact verified offline qualification kit
+        uses: actions/download-artifact@v4
+        with:
+          name: PremiereAIHarness-Offline-Qualification-Kit
+          path: ${{ runner.temp }}/pai-offline-kit
+          github-token: ${{ github.token }}
+          run-id: ${{ env.OFFLINE_RUN_ID }}
+
+      - name: Download exact verified native host gate
+        uses: actions/download-artifact@v4
+        with:
+          name: PremiereAIHarness-HostGate-windows-latest
+          path: ${{ runner.temp }}/pai-host-gate
+          github-token: ${{ github.token }}
+          run-id: ${{ env.HOST_GATE_RUN_ID }}
+
+      - name: Create technical config and run real Adobe preflight
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runner = Get-ChildItem "$env:RUNNER_TEMP\pai-offline-kit" -Recurse -Filter 'PremiereAIHarness-Qualification.exe' -File | Select-Object -First 1
+          $hostGate = Get-ChildItem "$env:RUNNER_TEMP\pai-host-gate" -Recurse -Filter 'PremiereAIHarness-HostGate.exe' -File | Select-Object -First 1
+          if (-not $runner) { throw 'verified qualification runner was not downloaded' }
+          if (-not $hostGate) { throw 'verified host gate was not downloaded' }
+          $kit = $runner.Directory.FullName
+          $config = [ordered]@{
+            formatVersion = 1
+            seller = [ordered]@{
+              name = 'Premiere AI Harness host qualification'
+              contact = 'ci@example.invalid'
+              supportUrl = ''
+              privacyUrl = ''
+              termsUrl = ''
+            }
+            qualification = [ordered]@{
+              keepProductInstalled = $false
+              launchPremiere = $true
+              preserveAllEvidence = $true
+            }
+          }
+          $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $kit 'seller-config.json') -Encoding UTF8
+          & $runner.FullName preflight -kit $kit
+          if ($LASTEXITCODE -ne 0) { throw "real Adobe preflight failed: $LASTEXITCODE" }
+          "KIT_ROOT=$kit" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "QUALIFICATION_RUNNER=$($runner.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "HOST_GATE_EXE=$($hostGate.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Run interactive Premiere host qualification through the verified native gate
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $desktop = [Environment]::GetFolderPath('Desktop')
+          $pass = Join-Path $desktop 'PAI-HOST-TEST-PASS.signal'
+          $fail = Join-Path $desktop 'PAI-HOST-TEST-FAIL.signal'
+          $passCmd = Join-Path $desktop 'PAI-MARK-HOST-TEST-PASS.cmd'
+          $failCmd = Join-Path $desktop 'PAI-MARK-HOST-TEST-FAIL.cmd'
+          Remove-Item $pass,$fail,$passCmd,$failCmd -Force -ErrorAction SilentlyContinue
+          Set-Content -LiteralPath $passCmd -Encoding Ascii -Value "@echo off`r`n>\"$pass\" echo PASS"
+          Set-Content -LiteralPath $failCmd -Encoding Ascii -Value "@echo off`r`n>\"$fail\" echo FAIL"
+
+          $minutes = 90
+          [int]::TryParse('${{ inputs.timeout_minutes }}', [ref]$minutes) | Out-Null
+          if ($minutes -lt 10) { $minutes = 10 }
+          if ($minutes -gt 110) { $minutes = 110 }
+          $stdout = Join-Path $env:RUNNER_TEMP 'premiere-qualification.stdout.txt'
+          $stderr = Join-Path $env:RUNNER_TEMP 'premiere-qualification.stderr.txt'
+
+          @"
+          ## Premiere host qualification is waiting for you
+
+          In the Premiere AI Harness Studio panel, complete:
+
+          - host certification
+          - Local provider self-test
+          - multicam edit
+          - automatic B-roll
+          - MOGRT captions
+          - dialogue/music mix
+          - export and render QA
+          - save, close, reopen, and rollback
+
+          On success, double-click: `$passCmd  
+          On failure, double-click: `$failCmd
+          "@ | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
+          try {
+            & $env:HOST_GATE_EXE -runner $env:QUALIFICATION_RUNNER -kit $env:KIT_ROOT -pass $pass -fail $fail -stdout $stdout -stderr $stderr -timeout ("{0}m" -f $minutes)
+            if ($LASTEXITCODE -ne 0) {
+              $detail = ((Get-Content $stdout -Raw -ErrorAction SilentlyContinue) + "`n" + (Get-Content $stderr -Raw -ErrorAction SilentlyContinue))
+              throw "host gate failed ($LASTEXITCODE):`n$detail"
+            }
+            $results = Get-ChildItem (Join-Path $env:KIT_ROOT 'results') -Filter '*.zip' -File -ErrorAction SilentlyContinue
+            if (-not $results) { throw 'qualification result ZIP was not produced' }
+          } finally {
+            Remove-Item $pass,$fail,$passCmd,$failCmd -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Cleanup runner-owned files and collect exact evidence
+        if: always()
+        shell: powershell
+        run: |
+          if ($env:QUALIFICATION_RUNNER -and (Test-Path -LiteralPath $env:QUALIFICATION_RUNNER)) {
+            & $env:QUALIFICATION_RUNNER cleanup -kit $env:KIT_ROOT
+          }
+          New-Item -ItemType Directory -Path host-evidence -Force | Out-Null
+          Copy-Item "$env:RUNNER_TEMP\premiere-qualification.*.txt" host-evidence -ErrorAction SilentlyContinue
+          if ($env:KIT_ROOT) { Copy-Item (Join-Path $env:KIT_ROOT 'results\*.zip') host-evidence -ErrorAction SilentlyContinue }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Premiere-host-qualification-evidence
+          path: host-evidence
+          if-no-files-found: warn
+          retention-days: 30
