@@ -1,6 +1,23 @@
 {
   "formatVersion": 1,
-  "status": "PENDING",
+  "status": "FAIL",
   "version": "0.3.1",
-  "reason": "Source packaging or CI policy changed; awaiting GitHub-hosted Linux/Windows verification."
+  "verifiedCommit": "dc06380c14ba2650efa26d9207621d59da660b24",
+  "runId": 32553307180,
+  "runAttempt": 1,
+  "verifyResult": "failure",
+  "compareResult": "skipped",
+  "runners": [
+    "ubuntu-latest",
+    "windows-latest"
+  ],
+  "crossPlatformReproducible": false,
+  "artifacts": [
+    "PremiereAIHarness-Core-Linux",
+    "PremiereAIHarness-Core-Windows"
+  ],
+  "packageKind": null,
+  "installable": false,
+  "treeSha256": null,
+  "recordedAt": "2026-08-22T05:03:17.620Z"
 }
