@@ -1,0 +1,53 @@
+name: Host gate CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - tools/host-gate/**
+      - .github/workflows/host-gate-ci.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Host gate (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tools/host-gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+          cache-dependency-path: tools/host-gate/go.mod
+      - run: go test ./...
+      - run: go vet ./...
+      - name: Build Windows x64 host gate
+        shell: bash
+        run: |
+          mkdir -p ../../dist/host-gate
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o ../../dist/host-gate/PremiereAIHarness-HostGate.exe .
+      - name: Execute compiled Windows host gate tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $env:GITHUB_WORKSPACE 'dist\host-gate\PremiereAIHarness-HostGate.exe'
+          if (-not (Test-Path $exe)) { throw 'compiled host gate missing' }
+          & $exe 2>$null
+          if ($LASTEXITCODE -ne 2) { throw "no-argument validation should exit 2, got $LASTEXITCODE" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PremiereAIHarness-HostGate-${{ matrix.os }}
+          path: dist/host-gate/PremiereAIHarness-HostGate.exe
+          if-no-files-found: error
+          retention-days: 30
