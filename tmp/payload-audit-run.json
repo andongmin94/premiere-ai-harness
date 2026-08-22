@@ -1,7 +1,10 @@
 {
   "formatVersion": 1,
-  "status": "RUNNING",
+  "status": "FAIL",
   "runId": 32586355376,
   "triggerCommit": "081d061a1f426adab4c147a386a0879921fc373c",
-  "payloadSha256": "57b1e625fe335629eeb8f189a4a97f8328e8e05f9113514b2f8ac435f8a90cc8"
+  "payloadSha256": "57b1e625fe335629eeb8f189a4a97f8328e8e05f9113514b2f8ac435f8a90cc8",
+  "version": null,
+  "sourceTreeSha256": null,
+  "ccxSha256": null
 }
