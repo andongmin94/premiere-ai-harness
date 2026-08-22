@@ -1,6 +1,23 @@
 {
   "formatVersion": 1,
-  "status": "PENDING",
+  "status": "FAIL",
   "version": "0.4.0",
-  "reason": "Host qualification workflow is being integrated; awaiting GitHub-hosted Linux/Windows verification."
+  "verifiedCommit": "f6a9a0bed55744a44926d5d520070180c944d907",
+  "runId": 32561727949,
+  "runAttempt": 1,
+  "verifyResult": "failure",
+  "compareResult": "skipped",
+  "runners": [
+    "ubuntu-latest",
+    "windows-latest"
+  ],
+  "crossPlatformReproducible": false,
+  "artifacts": [
+    "PremiereAIHarness-Core-Linux",
+    "PremiereAIHarness-Core-Windows"
+  ],
+  "packageKind": null,
+  "installable": false,
+  "treeSha256": null,
+  "recordedAt": "2026-08-22T08:14:44.224Z"
 }
