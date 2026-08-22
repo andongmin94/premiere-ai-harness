@@ -1,0 +1,26 @@
+name: Export full source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/export-full-source.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Archive repository source
+        run: |
+          git archive --format=zip --output=premiere-ai-harness-main.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: premiere-ai-harness-main-source
+          path: premiere-ai-harness-main.zip
+          if-no-files-found: error
+          retention-days: 1
