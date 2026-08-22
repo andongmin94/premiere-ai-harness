@@ -2,8 +2,8 @@
   "formatVersion": 1,
   "status": "PASS",
   "version": "0.4.0",
-  "verifiedCommit": "de87a3618d66c1183b51942d1b125963766a4f9b",
-  "runId": 32562800189,
+  "verifiedCommit": "ee87bd675de2603f3376221d5b1914c54003102c",
+  "runId": 32564081580,
   "runAttempt": 1,
   "verifyResult": "success",
   "compareResult": "success",
@@ -19,5 +19,5 @@
   "packageKind": "unsigned-uxp-source-directory",
   "installable": false,
   "treeSha256": "dbb9b810d5c3a5115722fdd686ec3b73a187ee3d303f4bf8959983e94d9296bf",
-  "recordedAt": "2026-08-22T08:38:59.153Z"
+  "recordedAt": "2026-08-22T09:08:07.212Z"
 }
