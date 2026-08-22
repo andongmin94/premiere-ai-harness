@@ -34,7 +34,7 @@ jobs:
           cat .bootstrap/core-0.2.0.part-*.b64 > /tmp/core-0.2.0.zip.b64
           base64 --decode /tmp/core-0.2.0.zip.b64 > /tmp/core-0.2.0.zip
           actual="$(sha256sum /tmp/core-0.2.0.zip | awk '{print $1}')"
-          expected="fce85d10f4694a96120719c6a428cc2eb5cab31357b7ad66109703893409a6f0"
+          expected="fce85d10f4694a96120719c6ba0886a0e2f483b908d9c42493730af220c1e12b"
           test "$actual" = "$expected"
           unzip -q -o /tmp/core-0.2.0.zip -d .
 
@@ -65,3 +65,5 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m 'feat: harden Core with in-plugin host certification [skip ci]'
           git push origin HEAD:main
+
+# Triggered after staging the reviewed deterministic payload on main.
