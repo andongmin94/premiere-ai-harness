@@ -3,13 +3,13 @@
 ## 자동 게이트
 
 - [x] `npm ci`
-- [ ] `npm run verify` — Core 0.4.0 GitHub-hosted CI 대기
+- [x] `npm run verify`
 - [x] 패널 부팅 모의시험
 - [x] 부분 mutation rollback 시험
 - [x] 전사·플래너 랜덤 속성시험
 - [x] 결정론적 unsigned UXP source directory
 - [x] 외부 프로세스·네트워크 권한 없음
-- [ ] Linux / Windows source tree 재현성 — Core 0.4.0 CI 대기
+- [x] Linux / Windows source tree 재현성
 
 ## 플러그인 내부 실제 호스트 검증
 
