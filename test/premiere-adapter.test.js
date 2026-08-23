@@ -160,3 +160,19 @@ test("rejects more than the output segment limit before mutation", async () => {
   assert.equal(project.sequences.length, 0);
   assert.equal(parent.items.some((item) => String(item.name).startsWith("PAI_OUTPUT_")), false);
 });
+
+test("rollback deletes only the newly created sequence when the host reuses a user sequence name", async () => {
+  const fixture = makeFixture({
+    existingSequence: "USER_SEQUENCE",
+    createdSequenceName: "USER_SEQUENCE",
+    failSequenceAfterCreate: true,
+  });
+  await assert.rejects(() => adapter.createRoughCut(
+    fixture.ppro,
+    [{ start: 0, end: 1 }],
+    "REQUESTED_NAME",
+    fast
+  ), /sequence failed after create/);
+  assert.deepEqual(fixture.project.sequences.map((sequence) => sequence.guid), ["old-sequence"]);
+  assert.equal(fixture.project.sequences[0].name, "USER_SEQUENCE");
+});

@@ -13,11 +13,16 @@ assert(manifest.id === "com.andongmin.premiere-ai-harness.core", "unexpected plu
 assert(/^\d+\.\d+\.\d+$/.test(manifest.version), "manifest version must be semver");
 assert(packageJson.version === manifest.version, "package and manifest versions differ");
 assert(manifest.host?.app === "premierepro", "host must be premierepro");
+assert(Array.isArray(manifest.host) === false, "distribution manifest must target exactly one host object");
 assert(compareVersions(manifest.host?.minVersion || "0", "26.3.0") >= 0, "Premiere 26.3+ is required");
 assert(Array.isArray(manifest.entrypoints) && manifest.entrypoints.length === 1, "exactly one panel entrypoint is required");
 assert(manifest.entrypoints[0].id === "premiere-ai-harness-panel", "unexpected panel id");
 assert(manifest.main === "index.html", "main must be index.html");
 assert(!manifest.requiredPermissions, "Core plugin must not request external permissions");
+
+for (const file of ["scripts/build-ccx.mjs", "scripts/ccx-format.mjs", "scripts/test-ccx.mjs"]) {
+  assert(fs.existsSync(path.join(root, file)), `distribution script is missing: ${file}`);
+}
 
 const jsFiles = walk(root).filter((file) => /\.(?:js|mjs)$/.test(file) && !isIgnored(file));
 for (const file of jsFiles) {
@@ -34,9 +39,21 @@ for (const id of referencedIds) assert(htmlIds.has(id), `plugin JavaScript refer
 
 const scriptSources = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((match) => match[1]);
 const expectedScripts = [
-  "lib/transcript.js", "lib/planner.js", "lib/host-certification.js", "lib/host-qualification.js",
-  "lib/session-state.js", "lib/premiere-runtime.js", "lib/generated-assets.js", "lib/generated-cleanup.js",
-  "lib/premiere-adapter.js", "lib/qualification-flow.js", "lib/editor-flow.js", "lib/ui-view.js", "index.js",
+  "lib/transcript.js",
+  "lib/planner.js",
+  "lib/host-certification.js",
+  "lib/session-state.js",
+  "lib/premiere-runtime.js",
+  "lib/sequence-snapshot.js",
+  "lib/qualification-record.js",
+  "lib/host-qualification.js",
+  "lib/generated-assets.js",
+  "lib/generated-cleanup.js",
+  "lib/premiere-adapter.js",
+  "lib/qualification-flow.js",
+  "lib/editor-flow.js",
+  "lib/ui-view.js",
+  "index.js",
 ];
 assert(JSON.stringify(scriptSources) === JSON.stringify(expectedScripts), "index.html script order is incorrect");
 for (const source of scriptSources) assert(fs.existsSync(path.join(pluginDir, source)), `missing script: ${source}`);
@@ -54,36 +71,49 @@ for (const forbidden of [
 ]) assert(!pluginText.includes(forbidden), `forbidden runtime dependency or unsafe construct: ${forbidden}`);
 assert(!/\bfetch\s*\(/.test(pluginText), "Core plugin must remain offline and may not call network fetch");
 
-for (const file of ["README.md", "STATUS.md", "docs/STATUS.md", "plugin/README.txt"]) {
+for (const file of [
+  "README.md",
+  "STATUS.md",
+  "docs/ARCHITECTURE.md",
+  "docs/DISTRIBUTION_KO.md",
+  "docs/RELEASE_CHECKLIST_KO.md",
+  "docs/UNINSTALL_KO.md",
+  "plugin/README.txt",
+]) {
   assert(read(path.join(root, file)).includes(manifest.version), `${file} does not mention current version ${manifest.version}`);
 }
-for (const obsolete of [
-  "helper", "tools", ".bootstrap", "audit", "temp", "scripts/lib/zip.mjs",
-  ".github/workflows/audit-source-export.yml", ".github/workflows/export-source-temp.yml",
-  ".github/workflows/offline-kit-ci.yml",
-  ".github/workflows/pre-premiere-e2e.yml", ".github/workflows/host-gate-ci.yml",
-]) assert(!fs.existsSync(path.join(root, obsolete)), `obsolete path must be removed: ${obsolete}`);
 
-validateReceipt();
+for (const obsolete of [
+  "helper", "tools", ".bootstrap", "audit", "temp", ".update", "tmp", "reports",
+  "docs/STATUS.md", "scripts/lib/zip.mjs",
+  ".github/workflows/apply-distribution-update.yml",
+  ".github/workflows/apply-fixed-core-0.5.0.yml",
+  ".github/workflows/candidate-audit.yml",
+  ".github/workflows/source-snapshot.yml",
+  ".github/workflows/audit-source-export.yml",
+  ".github/workflows/export-source-temp.yml",
+  ".github/workflows/offline-kit-ci.yml",
+  ".github/workflows/pre-premiere-e2e.yml",
+  ".github/workflows/host-gate-ci.yml",
+]) assert(!fs.existsSync(path.join(root, obsolete)), `obsolete path must be removed: ${obsolete}`);
+assert(!fs.readdirSync(root).some((name) => name.startsWith(".connector-probe")), "connector probe files must be removed");
+
+checkWorkflow();
 checkAdobeContract(pluginText);
 console.log(`CHECK PASS: ${jsFiles.length} JavaScript files, ${htmlIds.size} DOM ids, Adobe 26.3 contract, version ${manifest.version}`);
 
-function validateReceipt() {
-  const reportsDir = path.join(root, "reports");
-  if (!fs.existsSync(reportsDir)) return;
-  const entries = fs.readdirSync(reportsDir).sort();
-  assert(JSON.stringify(entries) === JSON.stringify(["product-ci.json"]), "reports may contain only product-ci.json");
-  const receipt = readJson(path.join(reportsDir, "product-ci.json"));
-  assert(receipt.formatVersion === 1, "CI receipt format is invalid");
-  assert(receipt.version === manifest.version, "CI receipt version differs from the product version");
-  assert(["PENDING", "PASS", "FAIL"].includes(receipt.status), "CI receipt status is invalid");
-  if (receipt.status === "PASS") {
-    assert(receipt.packageKind === "unsigned-uxp-source-directory", "CI receipt package kind is invalid");
-    assert(receipt.installable === false, "unsigned source must not be marked installable");
-    assert(/^[a-f0-9]{64}$/.test(receipt.treeSha256 || ""), "CI receipt tree SHA-256 is invalid");
-    assert(typeof receipt.verifiedCommit === "string" && receipt.verifiedCommit.length >= 7, "CI receipt commit is missing");
+function checkWorkflow() {
+  const directory = path.join(root, ".github", "workflows");
+  const entries = fs.readdirSync(directory).sort();
+  assert(JSON.stringify(entries) === JSON.stringify(["product-ci.yml"]), "only the permanent Product CI workflow may remain");
+  const workflow = read(path.join(directory, "product-ci.yml"));
+  for (const required of [
+    "ubuntu-latest", "windows-latest", "npm run verify", "npm run package:ccx", "npm run test:ccx",
+    "PremiereAIHarness-Core-Distribution-Receipt", "PremiereAIHarness-Source-Snapshot", "contents: read",
+  ]) assert(workflow.includes(required), `Product CI is missing: ${required}`);
+  for (const forbidden of ["self-hosted", "contents: write", "git push", "reports/product-ci.json", "Record CI result"]) {
+    assert(!workflow.includes(forbidden), `Product CI contains obsolete state mutation: ${forbidden}`);
   }
-  if (receipt.status === "PENDING") assert(typeof receipt.reason === "string" && receipt.reason.length > 0, "pending CI receipt needs a reason");
 }
 
 function checkAdobeContract(text) {
@@ -92,6 +122,7 @@ function checkAdobeContract(text) {
   const requiredTokens = {
     "Project.getActiveProject": "ppro.Project.getActiveProject",
     "ProjectUtils.getSelection": "ppro.ProjectUtils.getSelection",
+    "ProjectItemSelection.getItems": "getItems",
     "ClipProjectItem.cast": "ppro.ClipProjectItem",
     "FolderItem.cast": "ppro.FolderItem",
     "Transcript.hasTranscript": "ppro.Transcript.hasTranscript",
@@ -109,6 +140,18 @@ function checkAdobeContract(text) {
     "Project.closeSequence": "closeSequence",
     "Project.executeTransaction": "executeTransaction",
     "Project.lockedAccess": "lockedAccess",
+    "Project.save": "project.save",
+    "Sequence.getEndTime": "getEndTime",
+    "Sequence.getVideoTrackCount": "getVideoTrackCount",
+    "Sequence.getAudioTrackCount": "getAudioTrackCount",
+    "Sequence.getVideoTrack": "getVideoTrack",
+    "Sequence.getAudioTrack": "getAudioTrack",
+    "VideoTrack.getTrackItems": "getTrackItems",
+    "AudioTrack.getTrackItems": "getTrackItems",
+    "TrackItem.getStartTime": "getStartTime",
+    "TrackItem.getEndTime": "getEndTime",
+    "TrackItem.getProjectItem": "getProjectItem",
+    "Constants.TrackItemType.CLIP": "TrackItemType?.CLIP",
     "CompoundAction.addAction": "addAction",
   };
   for (const [name, token] of Object.entries(requiredTokens)) {

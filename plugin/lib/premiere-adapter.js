@@ -1,10 +1,11 @@
 (function (root, factory) {
   if (typeof module === "object" && module.exports && typeof window === "undefined") {
-    module.exports = factory(require("./premiere-runtime.js"), require("./generated-assets.js"), require("./generated-cleanup.js"));
+    module.exports = factory(require("./premiere-runtime.js"), require("./generated-assets.js"),
+      require("./generated-cleanup.js"), require("./sequence-snapshot.js"));
   } else {
-    root.PAI = Object.assign(root.PAI || {}, factory(root.PAI, root.PAI, root.PAI));
+    root.PAI = Object.assign(root.PAI || {}, factory(root.PAI, root.PAI, root.PAI, root.PAI));
   }
-})(typeof globalThis !== "undefined" ? globalThis : this, function (runtime, assets, cleanupApi) {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (runtime, assets, cleanupApi, snapshots) {
   "use strict";
 
   const MAX_OUTPUT_SEGMENTS = 500;
@@ -47,6 +48,10 @@
     const previousActive = await readActiveSequence(context.project);
     try {
       await buildGeneratedSequence(ppro, context.clip, ranges, resources, Object.assign({}, settings, { frameRate: timing.frameRate }));
+      const sequenceSnapshot = snapshots.validateGeneratedSequenceSnapshot(
+        await snapshots.readSequenceSnapshot(ppro, resources.sequence),
+        resources.subclipNames
+      );
       return Object.freeze({
         projectId: runtime.projectIdentity(context.project),
         sequenceId: runtime.sequenceIdentity(resources.sequence),
@@ -55,6 +60,7 @@
         operationId,
         frameRate: timing.frameRate,
         adjustedBoundaryCount: ranges.reduce((sum, range) => sum + Number(range.adjustedStart) + Number(range.adjustedEnd), 0),
+        sequenceSnapshot,
       });
     } catch (error) {
       await rethrowAfterCleanup(error, resources, settings, previousActive, "자동 정리도 완료하지 못했습니다");
@@ -75,6 +81,10 @@
     const previousActive = await readActiveSequence(context.project);
     try {
       await buildGeneratedSequence(ppro, context.clip, ranges, resources, Object.assign({}, settings, { frameRate: timing.frameRate }));
+      snapshots.validateGeneratedSequenceSnapshot(
+        await snapshots.readSequenceSnapshot(ppro, resources.sequence),
+        resources.subclipNames
+      );
       const cleanupResult = await cleanupApi.cleanupGenerated(resources, cleanupOptions(settings, previousActive));
       if (!cleanupResult.cleaned) throw new Error(`자체시험 흔적 정리에 실패했습니다: ${cleanupResult.errors.join(" / ")}`);
       return Object.freeze({
@@ -140,25 +150,66 @@
     }
   }
 
+  async function preparePersistedRoughCut(ppro, expected) {
+    const context = await getExpectedRoughCutContext(ppro, expected);
+    const beforeSave = snapshots.validateSequenceSegmentCount(
+      await snapshots.readSequenceSnapshot(ppro, context.sequence),
+      expected.segmentCount
+    );
+    if (!snapshots.sameSequenceSnapshot(expected.createdSnapshot, beforeSave)) {
+      throw new Error("러프컷 생성 후 시퀀스 구조가 바뀌었습니다. 검증을 다시 시작하십시오.");
+    }
+    if (typeof context.project.save !== "function" || await context.project.save() !== true) {
+      throw new Error("Premiere 프로젝트를 저장하지 못했습니다.");
+    }
+    const afterSave = await snapshots.readSequenceSnapshot(ppro, context.sequence);
+    if (!snapshots.sameSequenceSnapshot(beforeSave, afterSave)) {
+      throw new Error("프로젝트 저장 중 러프컷 시퀀스 구조가 바뀌었습니다.");
+    }
+    return Object.freeze({
+      status: "PASS",
+      projectId: context.projectId,
+      sequenceId: runtime.sequenceIdentity(context.sequence),
+      sequenceName: String(context.sequence.name || ""),
+      sequenceSnapshot: afterSave,
+    });
+  }
+
   async function verifyPersistedRoughCut(ppro, expected) {
+    const context = await getExpectedRoughCutContext(ppro, expected);
+    const sequenceSnapshot = snapshots.validateSequenceSegmentCount(
+      await snapshots.readSequenceSnapshot(ppro, context.sequence),
+      expected.segmentCount
+    );
+    if (!snapshots.sameSequenceSnapshot(expected.persistenceSnapshot, sequenceSnapshot)) {
+      throw new Error("저장 후 러프컷 시퀀스 구조가 달라졌습니다.");
+    }
+    return Object.freeze({
+      status: "PASS",
+      projectId: context.projectId,
+      sequenceId: runtime.sequenceIdentity(context.sequence),
+      sequenceName: String(context.sequence.name || ""),
+      sequenceSnapshot,
+    });
+  }
+
+  async function getExpectedRoughCutContext(ppro, expected) {
     if (!ppro?.Project?.getActiveProject) throw new Error("Premiere UXP API를 불러오지 못했습니다.");
     if (expected?.status !== "PASS") throw new Error("검증할 러프컷 기록이 없습니다.");
     const project = await ppro.Project.getActiveProject();
     if (!project) throw new Error("열린 Premiere 프로젝트가 없습니다.");
     const projectId = runtime.projectIdentity(project);
-    if (expected.projectId && projectId !== String(expected.projectId)) throw new Error("러프컷을 만든 Premiere 프로젝트를 다시 여십시오.");
-    const sequences = await project.getSequences() || [];
+    if (!projectId || projectId !== String(expected.projectId || "")) {
+      throw new Error("러프컷을 만든 Premiere 프로젝트를 다시 여십시오.");
+    }
     const expectedId = String(expected.sequenceId || "");
-    const expectedName = String(expected.sequenceName || "");
-    const sequence = sequences.find((item) => expectedId && runtime.sequenceIdentity(item) === expectedId)
-      || sequences.find((item) => String(item?.name || "") === expectedName);
-    if (!sequence) throw new Error(`저장 후 다시 열린 러프컷 시퀀스 “${expectedName}”을 찾지 못했습니다.`);
-    return Object.freeze({
-      status: "PASS",
-      projectId,
-      sequenceId: runtime.sequenceIdentity(sequence),
-      sequenceName: String(sequence.name || expectedName),
-    });
+    if (!expectedId) throw new Error("검증할 러프컷 시퀀스 식별자가 없습니다.");
+    const sequence = (await project.getSequences() || []).find((item) => runtime.sequenceIdentity(item) === expectedId);
+    if (!sequence) throw new Error(`러프컷 시퀀스 “${String(expected.sequenceName || "")}”을 찾지 못했습니다.`);
+    if (String(sequence.name || "") !== String(expected.sequenceName || "")) {
+      throw new Error("검증 중인 러프컷 시퀀스 이름이 바뀌었습니다.");
+    }
+    return { project, projectId, sequence };
   }
 
   async function cleanupSelfTestArtifacts(ppro, options) {
@@ -260,6 +311,7 @@
     createRoughCut,
     runHostSelfTest,
     runRollbackSelfTest,
+    preparePersistedRoughCut,
     verifyPersistedRoughCut,
     cleanupSelfTestArtifacts,
     alignKeepRangesToFrames: runtime.alignKeepRangesToFrames,

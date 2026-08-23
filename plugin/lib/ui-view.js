@@ -107,6 +107,7 @@
       byId("qualification-start").disabled = busy || !state.canStartQualification;
       byId("rollback-self-test").disabled = busy || !state.canRunRollback;
       byId("qualification-confirm-playback").disabled = busy || !state.canConfirmPlayback;
+      byId("qualification-prepare-persistence").disabled = busy || !state.canPreparePersistence;
       byId("qualification-confirm-persistence").disabled = busy || !state.canConfirmPersistence;
       byId("qualification-reset").disabled = busy || !state.hasQualification;
       for (const input of candidateInputs) input.disabled = busy;

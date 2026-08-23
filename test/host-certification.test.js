@@ -8,7 +8,7 @@ const host = {
   hostName: "premierepro",
   hostVersion: "26.3.1",
   uxpVersion: "8.2.0",
-  pluginVersion: "0.3.1",
+  pluginVersion: "0.5.1",
   platform: "win32",
   arch: "x64",
 };
@@ -39,7 +39,7 @@ test("accepts only a fully checked and cleaned PASS self-test", () => {
 test("invalidates certification when the host environment changes", () => {
   const value = certification.createCertification(host, passResult());
   for (const [field, changed] of [
-    ["hostVersion", "26.4.0"], ["uxpVersion", "8.3.0"], ["pluginVersion", "0.4.0"],
+    ["hostVersion", "26.4.0"], ["uxpVersion", "8.3.0"], ["pluginVersion", "0.5.2"],
     ["platform", "darwin"], ["arch", "arm64"],
   ]) assert.equal(certification.isCertificationValid(value, { ...host, [field]: changed }), false, field);
 });

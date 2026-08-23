@@ -28,15 +28,13 @@
     }
 
     function start() {
-      const environment = requireEnvironment();
-      const selection = requireSelection();
-      record = PAI.beginQualification(storage, environment, selection, sessionId);
+      record = PAI.beginQualification(storage, requireEnvironment(), requireSelection(), sessionId);
       render();
       return record;
     }
 
     function recordHostSelfTest(result) {
-      if (!record || !matchesCurrentSelection()) return null;
+      if (!matchesCurrentSelection()) return null;
       record = PAI.recordHostSelfTest(storage, requireEnvironment(), requireSelection(), result);
       render();
       return record;
@@ -61,7 +59,7 @@
     }
 
     function recordRoughCut(result) {
-      if (!record || !matchesCurrentSelection()) return null;
+      if (!matchesCurrentSelection()) return null;
       record = PAI.recordRoughCut(storage, requireEnvironment(), requireSelection(), result, sessionId);
       render();
       return record;
@@ -70,6 +68,14 @@
     function confirmPlayback() {
       requireActiveQualification();
       record = PAI.recordPlaybackConfirmation(storage, requireEnvironment(), requireSelection(), true);
+      render();
+      return record;
+    }
+
+    async function preparePersistence() {
+      if (!record || !PAI.canPreparePersistence(record)) throw new Error("러프컷 재생 확인을 먼저 완료하십시오.");
+      const preparation = await PAI.preparePersistedRoughCut(getPpro(), record.steps.roughCut);
+      record = PAI.recordPersistencePreparation(storage, requireEnvironment(), sessionId, preparation);
       render();
       return record;
     }
@@ -103,6 +109,7 @@
         canConfirmPlayback: Boolean(matching
           && record.steps.roughCut.status === "PASS"
           && record.steps.playback.status !== "PASS"),
+        canPreparePersistence: Boolean(environment && record && PAI.canPreparePersistence(record)),
         canConfirmPersistence: Boolean(environment && record && PAI.canConfirmPersistence(record, sessionId)),
       };
     }
@@ -137,6 +144,7 @@
       recordPremiereTranscript,
       recordRoughCut,
       confirmPlayback,
+      preparePersistence,
       confirmPersistence,
       clear,
       render,

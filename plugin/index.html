@@ -8,9 +8,11 @@
   <script src="lib/transcript.js"></script>
   <script src="lib/planner.js"></script>
   <script src="lib/host-certification.js"></script>
-  <script src="lib/host-qualification.js"></script>
   <script src="lib/session-state.js"></script>
   <script src="lib/premiere-runtime.js"></script>
+  <script src="lib/sequence-snapshot.js"></script>
+  <script src="lib/qualification-record.js"></script>
+  <script src="lib/host-qualification.js"></script>
   <script src="lib/generated-assets.js"></script>
   <script src="lib/generated-cleanup.js"></script>
   <script src="lib/premiere-adapter.js"></script>
@@ -25,7 +27,7 @@
       <h1>Premiere AI Harness</h1>
       <p>대사 중심 영상의 안전한 러프컷</p>
     </div>
-    <span class="version">0.4.0</span>
+    <span class="version">0.5.1</span>
   </header>
 
   <main>
@@ -81,13 +83,16 @@
         <h2>5. 실제 Premiere 검증</h2>
         <span class="badge" data-state="pending">내부 검증</span>
       </div>
-      <p class="help">판매 전 실기기 게이트입니다. 검증을 시작한 뒤 호스트 자체시험, 롤백 시험, 실제 Premiere 전사문, 러프컷, 재생, 저장·재실행을 순서대로 확인합니다.</p>
+      <p class="help">판매 전 실기기 게이트입니다. 호스트 자체시험, 롤백 시험, 실제 Premiere 전사문, 러프컷, 재생, 프로젝트 저장과 새 패널 세션의 구조 확인을 순서대로 진행합니다.</p>
       <button id="qualification-start" class="secondary" disabled>현재 원본으로 검증 시작·초기화</button>
       <div class="button-row two">
         <button id="rollback-self-test" class="secondary" disabled>실패 롤백 자체시험</button>
         <button id="qualification-confirm-playback" class="secondary" disabled>A/V 싱크·원본 불변 확인</button>
       </div>
-      <button id="qualification-confirm-persistence" class="secondary" disabled>저장·종료·재실행 확인</button>
+      <div class="button-row two">
+        <button id="qualification-prepare-persistence" class="secondary" disabled>프로젝트 저장·구조 기록</button>
+        <button id="qualification-confirm-persistence" class="secondary" disabled>새 패널 세션에서 구조 확인</button>
+      </div>
       <div id="qualification-status" class="info-line">검증을 시작하지 않았습니다.</div>
       <label for="qualification-report">기계 판독용 검증 기록</label>
       <textarea id="qualification-report" class="report" readonly spellcheck="false"></textarea>

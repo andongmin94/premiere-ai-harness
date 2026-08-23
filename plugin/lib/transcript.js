@@ -7,14 +7,25 @@
 
   const MAX_SEGMENTS = 20000;
   const MAX_DURATION_SECONDS = 12 * 60 * 60;
-  const TRUSTED_ARRAY_KEYS = new Set(["segments", "segment", "captions", "caption", "utterances", "utterance", "transcript", "transcripts", "results", "items"]);
+  const ARRAY_KEY_PRIORITY = Object.freeze({
+    segments: 10000,
+    captions: 8000,
+    utterances: 7000,
+    transcript: 6000,
+    transcripts: 6000,
+    results: 1000,
+    items: 500,
+  });
+  const REJECTED_ARRAY_KEYS = new Set(["words", "word", "tokens", "token"]);
 
   function parseTranscript(input, formatHint) {
     const text = String(input || "").replace(/^\uFEFF/, "").trim();
     if (!text) throw transcriptError("전사문이 비어 있습니다.");
     const hint = String(formatHint || "").toLowerCase();
-    if (hint === "srt" || looksLikeSrt(text)) return parseSrt(text);
-    if (hint === "vtt" || /^WEBVTT\b/i.test(text)) return parseWebVtt(text);
+    if (hint === "vtt") return parseWebVtt(text);
+    if (hint === "srt") return parseSrt(text);
+    if (/^WEBVTT\b/i.test(text)) return parseWebVtt(text);
+    if (looksLikeSrt(text)) return parseSrt(text);
     try { return parseTranscriptJson(JSON.parse(text)); }
     catch (error) {
       if (error?.code === "PAI_TRANSCRIPT") throw error;
@@ -125,14 +136,17 @@
     if (!segmentLike.length || segmentLike.length / sample.length < 0.7) return 0;
     const path = candidate.path.map((part) => String(part).toLowerCase());
     const lastKey = path[path.length - 1] || "";
-    const trustedPath = path.some((part) => TRUSTED_ARRAY_KEYS.has(part) || /transcript|caption|utterance|speech/.test(part));
-    let score = segmentLike.length * 5 + (TRUSTED_ARRAY_KEYS.has(lastKey) ? 120 : 0) + (trustedPath ? 50 : 0);
+    if (REJECTED_ARRAY_KEYS.has(lastKey)) return 0;
+    const keyPriority = ARRAY_KEY_PRIORITY[lastKey] || 0;
+    const transcriptPath = path.some((part) => /transcript|caption|utterance|speech/.test(part));
+    let score = keyPriority + (transcriptPath ? 250 : 0) + Math.min(segmentLike.length, 100) * 5;
     for (const item of segmentLike) {
-      if (typeof item.text === "string" || typeof item.transcript === "string" || typeof item.caption === "string") score += 5;
-      else if (Array.isArray(item.words)) score += 3;
-      else if (typeof item.value === "string") score += trustedPath ? 1 : -4;
+      if (typeof item.text === "string" || typeof item.transcript === "string" || typeof item.caption === "string") score += 8;
+      else if (Array.isArray(item.words)) score += 4;
+      else if (typeof item.value === "string") score += keyPriority || transcriptPath ? 1 : -8;
     }
-    if (!trustedPath && segmentLike.every((item) => typeof item.value === "string" && !item.text && !item.transcript && !item.caption && !item.words)) return 0;
+    if (!keyPriority && !transcriptPath
+      && segmentLike.every((item) => typeof item.value === "string" && !item.text && !item.transcript && !item.caption && !item.words)) return 0;
     return score;
   }
 

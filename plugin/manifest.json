@@ -5,7 +5,7 @@
     "default": "Premiere AI Harness",
     "ko": "Premiere AI Harness"
   },
-  "version": "0.4.0",
+  "version": "0.5.1",
   "main": "index.html",
   "host": {
     "app": "premierepro",

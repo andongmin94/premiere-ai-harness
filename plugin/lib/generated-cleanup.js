@@ -14,7 +14,7 @@
     const state = resources || {};
     const settings = options || {};
     const errors = [];
-    state.sequence = state.sequence || await assets.findCreatedSequence(state.project, state.sequenceName, state.sequenceBaseline);
+    state.sequence = state.sequence || await assets.findCreatedSequence(state.project, state.sequenceBaseline);
     state.runBin = state.runBin || await assets.findFolderByName(state.parentBin, state.binName, state.ppro);
 
     let sequenceRemoved = !state.sequence;
@@ -132,7 +132,14 @@
   async function verifyCleanupState(state, options, errors) {
     try {
       await runtime.poll(async function () {
-        const sequenceExists = state.sequenceName && (await state.project.getSequences() || []).some((item) => String(item?.name || "") === state.sequenceName);
+        const sequences = await state.project.getSequences() || [];
+        const sequenceIdentity = runtime.sequenceIdentity(state.sequence);
+        const sequenceExists = sequenceIdentity
+          ? sequences.some((item) => runtime.sequenceIdentity(item) === sequenceIdentity)
+          : sequences.some((item) => {
+            const identity = runtime.sequenceIdentity(item);
+            return identity && state.sequenceBaseline instanceof Set && !state.sequenceBaseline.has(identity);
+          });
         const parentItems = state.parentBin ? await state.parentBin.getItems() || [] : [];
         const binExists = state.binName && parentItems.some((item) => String(item?.name || "") === state.binName);
         const expected = new Set((state.subclipNames || []).map(String));

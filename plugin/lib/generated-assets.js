@@ -66,21 +66,17 @@
       if (!exists) throw new Error("생성된 시퀀스를 프로젝트에서 다시 확인하지 못했습니다.");
       return sequence;
     } catch (error) {
-      if (!resources.sequence) resources.sequence = await findCreatedSequence(project, resources.sequenceName, resources.sequenceBaseline);
+      if (!resources.sequence) resources.sequence = await findCreatedSequence(project, resources.sequenceBaseline);
       throw error;
     }
   }
 
-  async function findSequenceByName(project, name) {
-    if (!project || !name) return null;
-    return (await project.getSequences() || []).find((sequence) => String(sequence?.name || "") === String(name)) || null;
-  }
-
-  async function findCreatedSequence(project, name, baseline) {
-    const exact = await findSequenceByName(project, name);
-    if (exact) return exact;
+  async function findCreatedSequence(project, baseline) {
     const previous = baseline instanceof Set ? baseline : new Set();
-    const created = (await project.getSequences() || []).filter((sequence) => !previous.has(runtime.sequenceIdentity(sequence)));
+    const created = (await project.getSequences() || []).filter((sequence) => {
+      const identity = runtime.sequenceIdentity(sequence);
+      return identity && !previous.has(identity);
+    });
     return created.length === 1 ? created[0] : null;
   }
 
@@ -99,7 +95,6 @@
     waitForNamedClips,
     moveItems,
     createAndActivateSequence,
-    findSequenceByName,
     findCreatedSequence,
     findFolderByName,
   };

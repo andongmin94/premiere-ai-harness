@@ -8,9 +8,21 @@ const vm = require("node:vm");
 
 const pluginDir = path.resolve(__dirname, "..", "plugin");
 const scripts = [
-  "lib/transcript.js", "lib/planner.js", "lib/host-certification.js", "lib/session-state.js",
-  "lib/premiere-runtime.js", "lib/generated-assets.js", "lib/generated-cleanup.js",
-  "lib/premiere-adapter.js", "lib/ui-view.js", "index.js",
+  "lib/transcript.js",
+  "lib/planner.js",
+  "lib/host-certification.js",
+  "lib/session-state.js",
+  "lib/premiere-runtime.js",
+  "lib/sequence-snapshot.js",
+  "lib/qualification-record.js",
+  "lib/host-qualification.js",
+  "lib/generated-assets.js",
+  "lib/generated-cleanup.js",
+  "lib/premiere-adapter.js",
+  "lib/qualification-flow.js",
+  "lib/editor-flow.js",
+  "lib/ui-view.js",
+  "index.js",
 ];
 
 test("script-tag loading uses the UXP global path even when a module object exists", () => {
@@ -33,6 +45,7 @@ test("script-tag loading uses the UXP global path even when a module object exis
   }
   assert.equal(typeof context.PAI.parseTranscript, "function");
   assert.equal(typeof context.PAI.createRoughCut, "function");
+  assert.equal(typeof context.PAI.preparePersistedRoughCut, "function");
   assert.equal(typeof context.PAIController.createController, "function");
   assert.ok(registered.panels[context.PAIController.PANEL_ID]);
   assert.deepEqual(context.module.exports, {});

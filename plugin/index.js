@@ -3,6 +3,8 @@
     module.exports = factory(Object.assign(
       {},
       require("./lib/host-certification.js"),
+      require("./lib/sequence-snapshot.js"),
+      require("./lib/qualification-record.js"),
       require("./lib/host-qualification.js"),
       require("./lib/session-state.js"),
       require("./lib/premiere-adapter.js"),
@@ -78,6 +80,7 @@
       view.bind("qualification-start", "click", startQualification);
       view.bind("rollback-self-test", "click", runRollbackSelfTest);
       view.bind("qualification-confirm-playback", "click", confirmQualificationPlayback);
+      view.bind("qualification-prepare-persistence", "click", prepareQualificationPersistence);
       view.bind("qualification-confirm-persistence", "click", confirmQualificationPersistence);
       view.bind("qualification-reset", "click", resetQualification);
     }
@@ -145,14 +148,21 @@
     function confirmQualificationPlayback() {
       return withBusy(async function () {
         qualification.confirmPlayback();
-        view.setStatus("A/V 싱크와 원본 불변 확인을 기록했습니다. 프로젝트를 저장하고 Premiere를 다시 여십시오.", "success");
+        view.setStatus("A/V 싱크와 원본 불변 확인을 기록했습니다. 프로젝트 저장·구조 기록을 실행하십시오.", "success");
+      });
+    }
+
+    function prepareQualificationPersistence() {
+      return withBusy(async function () {
+        await qualification.preparePersistence();
+        view.setStatus("프로젝트를 저장하고 러프컷 구조를 기록했습니다. 패널을 닫고 새 패널 세션에서 확인하십시오.", "success");
       });
     }
 
     function confirmQualificationPersistence() {
       return withBusy(async function () {
         await qualification.confirmPersistence();
-        view.setStatus("저장·종료·재실행 후 러프컷 시퀀스 유지를 확인했습니다.", "success");
+        view.setStatus("새 패널 세션에서 저장된 러프컷 구조가 동일함을 확인했습니다.", "success");
       });
     }
 
@@ -228,6 +238,7 @@
       applyRoughCut,
       startQualification,
       confirmQualificationPlayback,
+      prepareQualificationPersistence,
       confirmQualificationPersistence,
       resetQualification,
       resetPluginData,

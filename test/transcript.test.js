@@ -77,3 +77,24 @@ test("accepts numeric seconds and clock strings in generic JSON", () => {
     { start: 1.75, end: 2.25 },
   ]);
 });
+
+test("detects standard WebVTT before the overlapping SRT heuristic", () => {
+  const value = `WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello world`;
+  assert.equal(transcript.parseTranscript(value)[0].text, "Hello world");
+  assert.equal(transcript.parseTranscript(value, "vtt")[0].start, 1);
+});
+
+test("keeps Adobe segment arrays when nested timed words are longer", () => {
+  const words = Array.from({ length: 30 }, (_, index) => ({
+    start: index / 100,
+    duration: 0.01,
+    value: `word-${index}`,
+  }));
+  const segments = transcript.parseTranscriptJson({
+    segments: [
+      { start: 0, end: 1, text: "first complete segment", words },
+      { start: 1, end: 2, text: "second complete segment", words: [{ start: 1, duration: 1, value: "second" }] },
+    ],
+  });
+  assert.deepEqual(segments.map((segment) => segment.text), ["first complete segment", "second complete segment"]);
+});

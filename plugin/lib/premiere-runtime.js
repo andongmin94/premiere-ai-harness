@@ -125,10 +125,10 @@
   }
 
   function safeCast(caster, value) { try { return caster?.cast ? caster.cast(value) || null : null; } catch (_) { return null; } }
-  function projectIdentity(project) { return String(project?.guid || project?.id || project?.projectId || project?.name || ""); }
+  function projectIdentity(project) { return String(project?.guid || project?.id || project?.projectId || ""); }
   function isInternalName(value) { return INTERNAL_PATTERN.test(String(value || "")); }
   function sanitizeName(value) { return String(value || "AI_ROUGH_CUT").replace(/[\\/:*?"<>|]/g, "_").trim().slice(0, 180) || "AI_ROUGH_CUT"; }
-  function sequenceIdentity(value) { return String(value?.guid || value?.id || value?.name || ""); }
+  function sequenceIdentity(value) { return String(value?.guid || value?.id || ""); }
   function clipIdentity(value) { try { return String(value?.getId?.() || value?.id || ""); } catch (_) { return String(value?.id || ""); } }
   function messageOf(error) { return error?.message ? String(error.message) : String(error); }
   function maybePromise(value) { return Promise.resolve(value); }

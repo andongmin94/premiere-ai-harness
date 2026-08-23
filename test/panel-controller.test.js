@@ -10,7 +10,7 @@ const { makeFixture } = require("./premiere-fixture.js");
 const IDS = [
   "inspect", "host-self-test", "cleanup-self-test", "load-premiere", "analyze-pasted", "apply", "reset-data",
   "preset", "transcript-input", "candidate-list", "plan-stats", "selection-info", "host-badge", "host-status", "status",
-  "qualification-start", "rollback-self-test", "qualification-confirm-playback", "qualification-confirm-persistence",
+  "qualification-start", "rollback-self-test", "qualification-confirm-playback", "qualification-prepare-persistence", "qualification-confirm-persistence",
   "qualification-reset", "qualification-status", "qualification-report",
 ];
 
@@ -73,7 +73,7 @@ function makeRequire(ppro, entrypointSpy) {
     if (name === "os") return { platform: () => "win32", arch: () => "x64" };
     if (name === "uxp") return {
       host: { name: "premierepro", version: "26.3.1" },
-      versions: { uxp: "8.2.0", plugin: "0.4.0" },
+      versions: { uxp: "8.2.0", plugin: "0.5.1" },
       entrypoints: { setup: entrypointSpy || function () {} },
     };
     throw new Error(`unexpected module: ${name}`);
@@ -133,6 +133,10 @@ test("guided qualification requires a later panel session before persistence can
   await first.confirmQualificationPlayback();
 
   assert.equal(first.getQualification().status, "PENDING");
+  assert.equal(firstDocument.elements.get("qualification-prepare-persistence").disabled, false);
+  assert.equal(firstDocument.elements.get("qualification-confirm-persistence").disabled, true);
+  await first.prepareQualificationPersistence();
+  assert.equal(fixture.project.saveCount, 1);
   assert.equal(firstDocument.elements.get("qualification-confirm-persistence").disabled, true);
   assert.equal(fixture.project.sequences.length, 1);
 

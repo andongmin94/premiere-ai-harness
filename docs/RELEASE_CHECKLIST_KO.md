@@ -1,37 +1,34 @@
-# Core 0.4.0 실제 Premiere 출시 체크리스트
+# Core 0.5.1 배포 자격검증 체크리스트
 
-## 자동 게이트
+## exact 커밋 자동 게이트
 
-- [x] `npm ci`
-- [x] `npm run verify`
-- [x] 패널 부팅 모의시험
-- [x] 부분 mutation rollback 시험
-- [x] 전사·플래너 랜덤 속성시험
-- [x] 결정론적 unsigned UXP source directory
-- [x] 외부 프로세스·네트워크 권한 없음
-- [x] Linux / Windows source tree 재현성
+- [ ] Linux / Windows `npm ci`와 `npm run verify` 성공
+- [ ] 패널 부팅·핵심 흐름 모의시험 성공
+- [ ] 부분 mutation rollback 시험 성공
+- [ ] 전사·플래너·시퀀스 구조 회귀시험 성공
+- [ ] coverage와 모듈 복잡도 예산 통과
+- [ ] Linux / Windows source tree SHA-256 일치
+- [ ] 결정론적 CCX 2회 빌드 바이트 일치
+- [ ] CCX manifest 루트, 안전 경로, 중복 없음
+- [ ] 암호화·ZIP data descriptor·숨은 바이트 없음
+- [ ] CCX CRC와 source directory 파일별 바이트 일치
+- [ ] `PremiereAIHarness-Core-Distribution-Receipt`가 대상 커밋과 일치
 
-## 플러그인 내부 실제 호스트 검증
+## 실제 Adobe 호스트·설치 게이트
 
-- [ ] 현재 원본으로 검증 시작
-- [ ] 일반 원본 클립으로 `호스트 자체시험` PASS
-- [ ] 같은 원본으로 `실패 롤백 자체시험` PASS
-- [ ] 자체시험 뒤 내부 자산 0개
+- [ ] Product CI receipt의 커밋과 CCX SHA-256 확인
+- [ ] CCX 더블클릭 후 Creative Cloud Desktop 설치 성공
+- [ ] Premiere Pro 26.3+에서 패널 표시
+- [ ] 일반 원본 클립의 `호스트 자체시험` PASS
+- [ ] `실패 롤백 자체시험` PASS와 내부 자산 0개
 - [ ] 실제 Premiere 전사문 불러오기
 - [ ] 새 러프컷 생성 및 원본 불변 확인
 - [ ] 프레임 경계와 A/V sync 확인
-- [ ] 프로젝트 저장 후 Premiere 종료
-- [ ] Premiere 재실행 후 생성 시퀀스 재탐색 PASS
-- [ ] 기계 판독용 검증 기록의 최종 `status`가 `PASS`
+- [ ] 프로젝트 저장·구조 기록 성공
+- [ ] Premiere 실제 종료·재실행
+- [ ] 새 패널 세션에서 저장된 시퀀스 구조 동일성 PASS
+- [ ] 같은 ID의 후속 버전 업데이트 설치
+- [ ] Creative Cloud Desktop 제거 후 패널 미노출 확인
+- [ ] 프로젝트 결과물 외 플러그인 전용 잔여 데이터 확인
 
-## 배포 게이트
-
-- [ ] Adobe UXP Developer Tool에서 source directory 로드
-- [ ] Premiere Pro 26.3+에서 패널 표시
-- [ ] Adobe UXP Developer Tool로 공식 CCX 패키징
-- [ ] Creative Cloud 설치
-- [ ] 같은 ID의 이전 버전에서 업데이트
-- [ ] Creative Cloud 제거
-- [ ] 제거 후 원본 프로젝트와 사용자 결과물 보존 확인
-
-전 항목 통과 전에는 판매하거나 Public Beta, Stable 또는 GA로 표시하지 않습니다.
+전 항목 통과 전에는 판매하거나 Public Beta, Stable, GA로 표시하지 않습니다.
