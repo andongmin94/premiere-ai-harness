@@ -21,6 +21,7 @@
 - stale source and stale transcript rejection
 - rollback and cleanup-failure reporting
 - deterministic CCX packaging and ZIP integrity
+- Windows artifact: `dist/PremiereAIHarness-Core-0.2.0.ccx`
 
 ## 남은 실제 Adobe 호스트 게이트
 
