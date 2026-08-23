@@ -1,3 +1,4 @@
+# Triggered through the contents API so GitHub Actions receives a normal push event.
 name: Apply verified Core 0.3.1 source
 
 on:
@@ -53,7 +54,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $parts = Get-ChildItem -LiteralPath ".bootstrap" -Filter "core-0.3.1.part-*" | Sort-Object Name
+          $parts = @(Get-ChildItem -LiteralPath ".bootstrap" -Filter "core-0.3.1.part-*" | Sort-Object Name)
           if ($parts.Count -ne 5) { throw "Expected 5 source archive parts, found $($parts.Count)." }
           $base64 = ($parts | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }) -join ""
           $archive = Join-Path $env:RUNNER_TEMP "core-0.3.1.tar.xz"
