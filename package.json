@@ -1,6 +1,6 @@
 {
   "name": "premiere-ai-harness",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "A local-first Premiere Pro UXP rough-cut harness",
   "license": "Apache-2.0",
@@ -10,9 +10,11 @@
   },
   "scripts": {
     "check": "node scripts/check.mjs",
-    "test": "node --test test/*.test.js",
+    "complexity": "node scripts/complexity.mjs",
+    "test": "node --test test/*.test.js test/*.test.mjs",
     "package": "node scripts/package-plugin.mjs",
     "test:package": "node scripts/test-package.mjs",
-    "verify": "npm run check && npm test && npm run package && npm run test:package"
+    "test:coverage": "node --experimental-test-coverage --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-branches=65 --test test/*.test.js test/*.test.mjs",
+    "verify": "npm run check && npm run complexity && npm run test:coverage && npm run package && npm run test:package"
   }
 }
