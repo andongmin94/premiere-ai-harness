@@ -1,11 +1,13 @@
 {
   "name": "premiere-ai-harness",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "A local-first Premiere Pro UXP rough-cut harness",
   "license": "Apache-2.0",
   "type": "commonjs",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "check": "node scripts/check.mjs",
     "test": "node --test test/*.test.js",

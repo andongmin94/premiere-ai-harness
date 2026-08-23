@@ -41,6 +41,11 @@ for (const forbidden of ["eval(", "new Function", "child_process", "Invoke-WebRe
 }
 assert(!/\bfetch\s*\(/.test(pluginText), "Core plugin must remain offline and may not call network fetch");
 assert(!manifest.requiredPermissions, "Core plugin must not request external permissions");
+for (const obsolete of [
+  "helper", "tools/qualification-runner", "tools/host-gate",
+  ".github/workflows/offline-kit-ci.yml", ".github/workflows/pre-premiere-e2e.yml",
+  ".github/workflows/host-gate-ci.yml"
+]) assert(!fs.existsSync(path.join(root, obsolete)), `obsolete product path must be removed: ${obsolete}`);
 
 checkAdobeContract();
 console.log(`CHECK PASS: ${jsFiles.length} JavaScript files, ${htmlIds.size} DOM ids, Adobe 26.3 contract`);
@@ -58,7 +63,9 @@ function checkAdobeContract() {
     "Transcript.hasTranscript": "ppro.Transcript.hasTranscript",
     "Transcript.exportToJSON": "ppro.Transcript.exportToJSON",
     "TickTime.createWithFrameAndFrameRate": "ppro.TickTime.createWithFrameAndFrameRate",
-    "FrameRate.createWithValue": "ppro.FrameRate.createWithValue"
+    "FrameRate.createWithValue": "ppro.FrameRate.createWithValue",
+    "Project.getActiveSequence": "project.getActiveSequence",
+    "Project.getRootItem": "project.getRootItem"
   };
   for (const [name, token] of Object.entries(requiredTokens)) {
     assert(contract.required.includes(name), `Adobe contract missing: ${name}`);
@@ -69,7 +76,7 @@ function checkAdobeContract() {
     "ClipProjectItem.createSubClipAction", "ClipProjectItem.getParentBin", "FolderItem.createBinAction",
     "FolderItem.getItems", "FolderItem.createMoveItemAction", "FolderItem.createRemoveItemAction",
     "Project.createSequenceFromMedia", "Project.getSequences", "Project.setActiveSequence",
-    "Project.deleteSequence", "Project.closeSequence", "Project.executeTransaction",
+    "Project.deleteSequence", "Project.closeSequence", "Project.getActiveSequence", "Project.getRootItem", "Project.executeTransaction",
     "Project.lockedAccess", "CompoundAction.addAction"
   ]) assert(contract.required.includes(name), `Adobe contract missing: ${name}`);
 }

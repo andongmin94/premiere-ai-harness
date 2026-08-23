@@ -34,6 +34,8 @@
     "ProjectItem.getId",
     "ProjectItem.getParentBin",
     "Media.duration",
-    "FootageInterpretation.getFrameRate"
+    "FootageInterpretation.getFrameRate",
+    "Project.getActiveSequence",
+    "Project.getRootItem"
   ]
 }

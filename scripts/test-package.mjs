@@ -18,7 +18,7 @@ try {
 
   const entries = readZipEntries(first);
   const expected = [
-    "LICENSE", "NOTICE", "README.txt", "index.html", "index.js", "lib/planner.js", "lib/premiere-adapter.js", "lib/transcript.js", "manifest.json", "styles.css",
+    "LICENSE", "NOTICE", "README.txt", "index.html", "index.js", "lib/host-certification.js", "lib/planner.js", "lib/premiere-adapter.js", "lib/transcript.js", "manifest.json", "styles.css",
   ];
   assert.deepEqual([...entries.keys()].sort(), expected.sort());
   const manifest = JSON.parse(entries.get("manifest.json").toString("utf8"));

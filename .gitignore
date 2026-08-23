@@ -2,12 +2,3 @@ node_modules/
 dist/
 *.log
 .DS_Store
-Thumbs.db
-
-# Qualification runner local state
-PremiereAIHarness-Qualification.exe
-_state/
-_runs/
-results/
-seller-config.json
-payload/
