@@ -4,10 +4,16 @@ name: Product CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - reports/product-ci.json
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: product-ci-main
+  cancel-in-progress: true
 
 jobs:
   verify:
@@ -34,3 +40,63 @@ jobs:
             dist/PremiereAIHarness-Core-0.3.1-uxp-source.manifest.json
           if-no-files-found: error
           retention-days: 30
+
+  record:
+    name: Record verified main
+    needs: verify
+    if: ${{ success() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run package
+      - name: Create machine-readable verification receipt
+        shell: bash
+        env:
+          VERIFIED_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const manifestPath = "dist/PremiereAIHarness-Core-0.3.1-uxp-source.manifest.json";
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+          fs.mkdirSync("reports", { recursive: true });
+          fs.writeFileSync("reports/product-ci.json", `${JSON.stringify({
+            formatVersion: 1,
+            status: "PASS",
+            version: "0.3.1",
+            verifiedCommit: process.env.VERIFIED_SHA,
+            runId: Number(process.env.RUN_ID),
+            runAttempt: Number(process.env.RUN_ATTEMPT),
+            runners: ["ubuntu-latest", "windows-latest"],
+            artifact: "PremiereAIHarness-Core-Windows",
+            packageKind: manifest.packageKind,
+            installable: manifest.installable,
+            treeSha256: manifest.treeSha256,
+            recordedAt: new Date().toISOString()
+          }, null, 2)}\n`);
+          NODE
+      - name: Commit receipt only when main is unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "${GITHUB_SHA}" || {
+            echo "main moved while CI was running; refusing to write a stale receipt"
+            exit 1
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reports/product-ci.json
+          git diff --cached --quiet && exit 0
+          git commit -m "ci: record Core 0.3.1 verification [skip ci]"
+          git push origin HEAD:main
