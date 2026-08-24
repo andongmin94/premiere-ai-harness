@@ -57,13 +57,24 @@ for (const file of ["README.md", "STATUS.md", "docs/STATUS.md", "plugin/README.t
   assert(read(path.join(root, file)).includes(manifest.version), `${file} does not mention current version ${manifest.version}`);
 }
 for (const obsolete of [
-  "helper", "tools", "reports", ".bootstrap", "audit", "scripts/lib/zip.mjs",
+  "helper", "tools", ".bootstrap", "audit", "scripts/lib/zip.mjs",
   ".github/workflows/audit-source-export.yml", ".github/workflows/offline-kit-ci.yml",
   ".github/workflows/pre-premiere-e2e.yml", ".github/workflows/host-gate-ci.yml",
 ]) assert(!fs.existsSync(path.join(root, obsolete)), `obsolete path must be removed: ${obsolete}`);
 
+checkReportsDirectory();
 checkAdobeContract(pluginText);
 console.log(`CHECK PASS: ${jsFiles.length} JavaScript files, ${htmlIds.size} DOM ids, Adobe 26.3 contract, version ${manifest.version}`);
+
+function checkReportsDirectory() {
+  const directory = path.join(root, "reports");
+  if (!fs.existsSync(directory)) return;
+  const entries = fs.readdirSync(directory, { withFileTypes: true });
+  assert(entries.length === 1 && entries[0].isFile() && entries[0].name === "product-ci.json", "reports may contain only product-ci.json");
+  const receipt = readJson(path.join(directory, "product-ci.json"));
+  assert(receipt.formatVersion === 1 && receipt.version === manifest.version, "invalid product CI receipt version");
+  assert(["PENDING", "PASS", "FAIL"].includes(receipt.status), "invalid product CI receipt status");
+}
 
 function checkAdobeContract(text) {
   const contract = readJson(path.join(root, "vendor", "adobe", "premierepro-26.3.0", "api-contract.json"));
