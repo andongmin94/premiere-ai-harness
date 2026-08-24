@@ -1,6 +1,6 @@
 {
   "name": "premiere-ai-harness",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "description": "A local-first Premiere Pro UXP rough-cut harness",
   "license": "Apache-2.0",
