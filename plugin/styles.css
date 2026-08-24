@@ -8,14 +8,15 @@ header p { margin: 4px 0 0; color: #aaa; font-size: 12px; }
 main { display: grid; gap: 10px; padding: 8px 12px 76px; }
 .card { padding: 13px; border: 1px solid #3a3a3a; border-radius: 8px; background: #272727; }
 .card.accent { border-color: #6d5bd0; }
-.certification-card { border-color: #4b5c78; }
-.maintenance-card { border-style: dashed; }
+.qualification-card { border-color: #4b6d69; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 h2 { margin: 0 0 10px; font-size: 14px; }
 .section-heading h2 { margin-bottom: 0; }
-.help, label, .info-line, .fine-print { color: #bdbdbd; font-size: 12px; line-height: 1.45; }
+.help, label, .info-line, .fine-print, summary { color: #bdbdbd; font-size: 12px; line-height: 1.45; }
 .fine-print { margin: 8px 0 0; color: #8f8f8f; font-size: 11px; }
 label { display: block; margin: 10px 0 5px; }
+details { margin-top: 10px; }
+summary { cursor: pointer; }
 button, select, textarea { width: 100%; border: 1px solid #555; border-radius: 6px; background: #343434; color: #fff; font: inherit; }
 button { min-height: 34px; padding: 7px 10px; background: #6755cb; border-color: #7c6ae0; font-weight: 600; cursor: pointer; }
 button.secondary { background: #3a3a3a; border-color: #5a5a5a; }
@@ -23,8 +24,10 @@ button.danger { background: #4a2f32; border-color: #805058; }
 button:disabled { opacity: .45; cursor: default; }
 .button-row { display: grid; gap: 8px; margin-top: 10px; }
 .button-row.two { grid-template-columns: 1fr 1fr; }
+.button-row.compact { margin-top: 8px; }
 select { height: 32px; padding: 4px 8px; }
 textarea { min-height: 120px; padding: 9px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; }
+textarea.report { min-height: 190px; white-space: pre; tab-size: 2; }
 .info-line { margin-top: 9px; padding: 8px; border-radius: 5px; background: #202020; overflow-wrap: anywhere; }
 .badge { flex: 0 0 auto; padding: 3px 8px; border: 1px solid #666; border-radius: 999px; color: #bbb; font-size: 10px; font-weight: 700; }
 .badge[data-state="pass"] { border-color: #4f8e60; background: #263b2d; color: #9be7ad; }
