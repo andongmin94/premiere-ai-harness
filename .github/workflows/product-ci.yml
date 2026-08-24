@@ -85,9 +85,9 @@ jobs:
           retention-days: 30
 
   record:
-    name: Record verified main
-    needs: compare
-    if: ${{ success() }}
+    name: Record CI result
+    needs: [verify, compare]
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -96,45 +96,61 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
+        if: ${{ needs.verify.result == 'success' && needs.compare.result == 'success' }}
         with:
           node-version: "22"
           cache: npm
       - uses: actions/download-artifact@v4
+        if: ${{ needs.verify.result == 'success' && needs.compare.result == 'success' }}
         with:
           name: PremiereAIHarness-Core-CrossPlatformReceipt
           path: ci-receipt
-      - run: npm ci --ignore-scripts --no-audit --no-fund
-      - run: npm run package
-      - name: Create machine-readable verification receipt
+      - if: ${{ needs.verify.result == 'success' && needs.compare.result == 'success' }}
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - if: ${{ needs.verify.result == 'success' && needs.compare.result == 'success' }}
+        run: npm run package
+      - name: Create machine-readable CI receipt
         shell: bash
         env:
           VERIFIED_SHA: ${{ github.sha }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          COMPARE_RESULT: ${{ needs.compare.result }}
         run: |
           node <<'NODE'
           const fs = require("node:fs");
-          const manifest = JSON.parse(fs.readFileSync("dist/PremiereAIHarness-Core-0.3.1-uxp-source.manifest.json", "utf8"));
-          const crossPlatform = JSON.parse(fs.readFileSync("ci-receipt/cross-platform-package.json", "utf8"));
-          if (manifest.treeSha256 !== crossPlatform.treeSha256) {
-            throw new Error(`record package mismatch: ${manifest.treeSha256} != ${crossPlatform.treeSha256}`);
-          }
-          fs.mkdirSync("reports", { recursive: true });
-          fs.writeFileSync("reports/product-ci.json", `${JSON.stringify({
+          const passed = process.env.VERIFY_RESULT === "success" && process.env.COMPARE_RESULT === "success";
+          const receipt = {
             formatVersion: 1,
-            status: "PASS",
+            status: passed ? "PASS" : "FAIL",
             version: "0.3.1",
             verifiedCommit: process.env.VERIFIED_SHA,
             runId: Number(process.env.RUN_ID),
             runAttempt: Number(process.env.RUN_ATTEMPT),
+            verifyResult: process.env.VERIFY_RESULT,
+            compareResult: process.env.COMPARE_RESULT,
             runners: ["ubuntu-latest", "windows-latest"],
-            crossPlatformReproducible: true,
+            crossPlatformReproducible: false,
             artifacts: ["PremiereAIHarness-Core-Linux", "PremiereAIHarness-Core-Windows"],
-            packageKind: manifest.packageKind,
-            installable: manifest.installable,
-            treeSha256: manifest.treeSha256,
+            packageKind: null,
+            installable: false,
+            treeSha256: null,
             recordedAt: new Date().toISOString()
-          }, null, 2)}\n`);
+          };
+          if (passed) {
+            const manifest = JSON.parse(fs.readFileSync("dist/PremiereAIHarness-Core-0.3.1-uxp-source.manifest.json", "utf8"));
+            const crossPlatform = JSON.parse(fs.readFileSync("ci-receipt/cross-platform-package.json", "utf8"));
+            if (manifest.treeSha256 !== crossPlatform.treeSha256) {
+              throw new Error(`record package mismatch: ${manifest.treeSha256} != ${crossPlatform.treeSha256}`);
+            }
+            receipt.crossPlatformReproducible = true;
+            receipt.packageKind = manifest.packageKind;
+            receipt.installable = manifest.installable;
+            receipt.treeSha256 = manifest.treeSha256;
+          }
+          fs.mkdirSync("reports", { recursive: true });
+          fs.writeFileSync("reports/product-ci.json", `${JSON.stringify(receipt, null, 2)}\n`);
           NODE
       - name: Commit receipt only when main is unchanged
         shell: bash
@@ -149,5 +165,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add reports/product-ci.json
           git diff --cached --quiet && exit 0
-          git commit -m "ci: record reproducible Core 0.3.1 verification [skip ci]"
+          git commit -m "ci: record Core 0.3.1 result [skip ci]"
           git push origin HEAD:main
