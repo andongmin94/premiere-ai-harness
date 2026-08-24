@@ -4,11 +4,14 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const controllerApi = require("../plugin/index.js");
 const certification = require("../plugin/lib/host-certification.js");
+const qualificationApi = require("../plugin/lib/host-qualification.js");
 const { makeFixture } = require("./premiere-fixture.js");
 
 const IDS = [
   "inspect", "host-self-test", "cleanup-self-test", "load-premiere", "analyze-pasted", "apply", "reset-data",
   "preset", "transcript-input", "candidate-list", "plan-stats", "selection-info", "host-badge", "host-status", "status",
+  "qualification-start", "rollback-self-test", "qualification-confirm-playback", "qualification-confirm-persistence",
+  "qualification-reset", "qualification-status", "qualification-report",
 ];
 
 class FakeElement {
@@ -70,7 +73,7 @@ function makeRequire(ppro, entrypointSpy) {
     if (name === "os") return { platform: () => "win32", arch: () => "x64" };
     if (name === "uxp") return {
       host: { name: "premierepro", version: "26.3.1" },
-      versions: { uxp: "8.2.0", plugin: "0.3.1" },
+      versions: { uxp: "8.2.0", plugin: "0.4.0" },
       entrypoints: { setup: entrypointSpy || function () {} },
     };
     throw new Error(`unexpected module: ${name}`);
@@ -81,7 +84,7 @@ test("controller boots with the actual DOM contract and completes the core flow"
   const document = makeDocument();
   const storage = makeStorage();
   const fixture = makeFixture();
-  const controller = controllerApi.createController({ document, storage, requireFn: makeRequire(fixture.ppro) });
+  const controller = controllerApi.createController({ document, storage, requireFn: makeRequire(fixture.ppro), sessionId: "core-session" });
   controller.initialize();
 
   assert.equal(document.elements.get("inspect").listeners.has("click"), true);
@@ -106,9 +109,50 @@ test("controller boots with the actual DOM contract and completes the core flow"
   controller.resetPluginData();
   assert.equal(storage.values.get("unrelated"), "keep");
   assert.equal(storage.values.has(certification.CERTIFICATION_STORAGE_KEY), false);
+  assert.equal(storage.values.has(qualificationApi.QUALIFICATION_STORAGE_KEY), false);
   assert.equal(controller.getSession().selection, null);
 });
 
+test("guided qualification requires a later panel session before persistence can pass", async () => {
+  const storage = makeStorage();
+  const fixture = makeFixture();
+  const firstDocument = makeDocument();
+  const first = controllerApi.createController({
+    document: firstDocument,
+    storage,
+    requireFn: makeRequire(fixture.ppro),
+    sessionId: "session-one",
+  });
+  first.initialize();
+  await first.inspectSelection();
+  await first.startQualification();
+  await first.runHostSelfTest();
+  await first.runRollbackSelfTest();
+  await first.loadPremiereTranscript();
+  await first.applyRoughCut();
+  await first.confirmQualificationPlayback();
+
+  assert.equal(first.getQualification().status, "PENDING");
+  assert.equal(firstDocument.elements.get("qualification-confirm-persistence").disabled, true);
+  assert.equal(fixture.project.sequences.length, 1);
+
+  const secondDocument = makeDocument();
+  const second = controllerApi.createController({
+    document: secondDocument,
+    storage,
+    requireFn: makeRequire(fixture.ppro),
+    sessionId: "session-two",
+  });
+  second.initialize();
+  assert.equal(secondDocument.elements.get("qualification-confirm-persistence").disabled, false);
+  await second.confirmQualificationPersistence();
+
+  assert.equal(second.getQualification().status, "PASS");
+  assert.match(secondDocument.elements.get("qualification-report").value, /"status": "PASS"/);
+  second.resetQualification();
+  assert.equal(storage.values.get("unrelated"), "keep");
+  assert.equal(storage.values.has(qualificationApi.QUALIFICATION_STORAGE_KEY), false);
+});
 
 test("re-inspecting a clip deliberately clears the prior transcript and plan", async () => {
   const document = makeDocument();
