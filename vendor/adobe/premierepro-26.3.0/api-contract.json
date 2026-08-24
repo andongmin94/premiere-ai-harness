@@ -2,8 +2,16 @@
   "formatVersion": 1,
   "host": "premierepro",
   "version": "26.3.0",
-  "source": "Adobe Premiere Pro UXP public TypeScript declarations",
-  "sourceSha256": "c16a90e3fb24924ac2e3b00f0e269981c82898e2d15bfe77c67e2be2f1fc4db5",
+  "reviewedAt": "2026-08-22",
+  "source": "Adobe Premiere Pro UXP public API reference and official sample repository",
+  "sourceReferences": [
+    "https://developer.adobe.com/premiere-pro/uxp/ppro-reference/",
+    "https://developer.adobe.com/premiere-pro/uxp/ppro-reference/classes/project/",
+    "https://developer.adobe.com/premiere-pro/uxp/ppro-reference/classes/clipprojectitem/",
+    "https://developer.adobe.com/premiere-pro/uxp/ppro-reference/classes/folderitem/",
+    "https://developer.adobe.com/premiere-pro/uxp/ppro-reference/classes/transcript/",
+    "https://github.com/AdobeDocs/uxp-premiere-pro-samples"
+  ],
   "required": [
     "Project.getActiveProject",
     "ProjectUtils.getSelection",
@@ -25,17 +33,17 @@
     "Project.setActiveSequence",
     "Project.deleteSequence",
     "Project.closeSequence",
+    "Project.getActiveSequence",
+    "Project.getRootItem",
     "Project.executeTransaction",
     "Project.lockedAccess",
     "TickTime.createWithFrameAndFrameRate",
     "FrameRate.createWithValue",
     "CompoundAction.addAction",
     "entrypoints.setup",
+    "Project.guid",
     "ProjectItem.getId",
-    "ProjectItem.getParentBin",
     "Media.duration",
-    "FootageInterpretation.getFrameRate",
-    "Project.getActiveSequence",
-    "Project.getRootItem"
+    "FootageInterpretation.getFrameRate"
   ]
 }

@@ -1,11 +1,13 @@
-Premiere AI Harness Core 0.3.0
+Premiere AI Harness Core 0.3.1
 
-Premiere Pro 26.3 이상용 로컬 전사 기반 검토형 러프컷 플러그인입니다.
+Premiere Pro 26.3+용 로컬 검토형 러프컷 UXP 플러그인 소스입니다.
 
-- 외부 서버, API 키, Companion, Node.js 런타임을 사용하지 않습니다.
-- 원본 클립과 기존 시퀀스를 수정하지 않습니다.
-- 실제 편집 전에 패널의 호스트 자체시험을 통과해야 합니다.
-- 내부 시험 자산은 생성·검증 후 즉시 정리되며, 정리 실패는 사용자에게 표시됩니다.
-- 실제 출력은 PAI_OUTPUT_ 접두어의 전용 빈에 격리됩니다.
+- 단일 원본 클립
+- Premiere 전사문 또는 SRT/WebVTT/지원 JSON
+- 재촬영·무음·필러·인접 반복 후보
+- 사용자 검토 후 새 하드 바운더리 러프컷 시퀀스
+- 프로젝트·원본·전사문 재검증
+- 부분 실패 rollback과 호스트 자체시험
+- 네트워크·API 키·Companion 없음
 
-현재 라벨: Public Beta Candidate
+이 디렉터리는 unsigned UXP source입니다. Adobe UXP Developer Tool로 로드·패키징하고 실제 Premiere 호스트 검증을 통과하기 전에는 배포판이 아닙니다.

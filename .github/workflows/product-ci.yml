@@ -29,8 +29,7 @@ jobs:
         with:
           name: PremiereAIHarness-Core-Windows
           path: |
-            dist/PremiereAIHarness-Core-*.ccx
-            dist/PremiereAIHarness-Core-*.ccx.sha256
-            dist/PremiereAIHarness-Core-*.ccx.manifest.json
+            dist/PremiereAIHarness-Core-0.3.1-uxp-source/
+            dist/PremiereAIHarness-Core-0.3.1-uxp-source.manifest.json
           if-no-files-found: error
           retention-days: 30

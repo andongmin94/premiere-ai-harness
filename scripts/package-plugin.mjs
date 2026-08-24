@@ -2,46 +2,79 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { collectDirectoryEntries, createZip } from "./lib/zip.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-export function packagePlugin(outputFile = defaultOutput()) {
+export function packagePlugin(outputDirectory = defaultOutputDirectory()) {
   const pluginDir = path.join(root, "plugin");
-  const manifest = JSON.parse(fs.readFileSync(path.join(pluginDir, "manifest.json"), "utf8"));
-  const entries = collectDirectoryEntries(pluginDir, {
-    filter(relative, stat) {
-      if (!stat.isFile()) return stat.isDirectory();
-      return !relative.startsWith(".") && !relative.endsWith("~");
-    },
-  });
-  entries.push({ name: "LICENSE", data: fs.readFileSync(path.join(root, "LICENSE")), mode: 0o100644 });
-  entries.push({ name: "NOTICE", data: fs.readFileSync(path.join(root, "NOTICE")), mode: 0o100644 });
-  entries.push({ name: "README.txt", data: fs.readFileSync(path.join(root, "plugin", "README.txt")), mode: 0o100644 });
-  const result = createZip(entries, outputFile);
-  const digest = sha256File(outputFile);
-  fs.writeFileSync(`${outputFile}.sha256`, `${digest}  ${path.basename(outputFile)}\n`);
+  const manifest = readJson(path.join(pluginDir, "manifest.json"));
+  fs.rmSync(outputDirectory, { recursive: true, force: true });
+  fs.mkdirSync(outputDirectory, { recursive: true });
+  copyDirectory(pluginDir, outputDirectory);
+  fs.copyFileSync(path.join(root, "LICENSE"), path.join(outputDirectory, "LICENSE"));
+  fs.copyFileSync(path.join(root, "NOTICE"), path.join(outputDirectory, "NOTICE"));
+
+  const entries = listFiles(outputDirectory).map((file) => {
+    const data = fs.readFileSync(file);
+    return {
+      path: normalizePath(path.relative(outputDirectory, file)),
+      bytes: data.length,
+      sha256: sha256(data),
+    };
+  }).sort((left, right) => left.path.localeCompare(right.path, "en"));
+  const treeSha256 = sha256(Buffer.from(entries.map((entry) => `${entry.path}\0${entry.bytes}\0${entry.sha256}\n`).join("")));
   const artifact = {
     formatVersion: 1,
+    packageKind: "unsigned-uxp-source-directory",
+    installable: false,
+    requiresAdobeUxpDeveloperToolPackaging: true,
     pluginId: manifest.id,
     version: manifest.version,
-    file: path.basename(outputFile),
-    bytes: result.bytes,
-    sha256: digest,
-    entries: entries.map((entry) => ({ name: entry.name, bytes: Buffer.byteLength(entry.data), sha256: crypto.createHash("sha256").update(entry.data).digest("hex") })).sort((a, b) => a.name.localeCompare(b.name, "en")),
+    directory: path.basename(outputDirectory),
+    treeSha256,
+    entries,
   };
-  fs.writeFileSync(`${outputFile}.manifest.json`, `${JSON.stringify(artifact, null, 2)}\n`);
-  return artifact;
+  const manifestFile = `${outputDirectory}.manifest.json`;
+  fs.writeFileSync(manifestFile, `${JSON.stringify(artifact, null, 2)}\n`);
+  return Object.freeze({ outputDirectory, manifestFile, ...artifact });
 }
 
-function defaultOutput() {
-  const manifest = JSON.parse(fs.readFileSync(path.join(root, "plugin", "manifest.json"), "utf8"));
-  return path.join(root, "dist", `PremiereAIHarness-Core-${manifest.version}.ccx`);
+function defaultOutputDirectory() {
+  const manifest = readJson(path.join(root, "plugin", "manifest.json"));
+  return path.join(root, "dist", `PremiereAIHarness-Core-${manifest.version}-uxp-source`);
 }
 
-function sha256File(file) { return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex"); }
+function copyDirectory(source, destination) {
+  for (const entry of fs.readdirSync(source, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name, "en"))) {
+    if (entry.name.startsWith(".") || entry.name.endsWith("~")) continue;
+    const from = path.join(source, entry.name);
+    const to = path.join(destination, entry.name);
+    if (entry.isDirectory()) {
+      fs.mkdirSync(to, { recursive: true });
+      copyDirectory(from, to);
+    } else if (entry.isFile()) {
+      fs.copyFileSync(from, to);
+    } else {
+      throw new Error(`Unsupported source entry: ${from}`);
+    }
+  }
+}
+
+function listFiles(directory) {
+  const output = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const full = path.join(directory, entry.name);
+    if (entry.isDirectory()) output.push(...listFiles(full));
+    else if (entry.isFile()) output.push(full);
+  }
+  return output;
+}
+
+function readJson(file) { return JSON.parse(fs.readFileSync(file, "utf8")); }
+function sha256(value) { return crypto.createHash("sha256").update(value).digest("hex"); }
+function normalizePath(value) { return String(value).replace(/\\/g, "/"); }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const artifact = packagePlugin(process.argv[2] ? path.resolve(process.argv[2]) : defaultOutput());
-  console.log(`PACKAGE PASS: ${artifact.file} ${artifact.bytes} bytes sha256:${artifact.sha256}`);
+  const artifact = packagePlugin(process.argv[2] ? path.resolve(process.argv[2]) : defaultOutputDirectory());
+  console.log(`PACKAGE PASS: ${artifact.directory} ${artifact.entries.length} files tree-sha256:${artifact.treeSha256}`);
 }

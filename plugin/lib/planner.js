@@ -1,16 +1,16 @@
 (function (root, factory) {
   const api = factory();
-  if (typeof module === "object" && module.exports) module.exports = api;
+  if (typeof module === "object" && module.exports && typeof window === "undefined") module.exports = api;
   else root.PAI = Object.assign(root.PAI || {}, api);
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
+  const EPSILON = 1e-9;
   const PRESETS = Object.freeze({
     conservative: Object.freeze({ silenceSeconds: 1.2, preservePause: 0.25, duplicateSimilarity: 0.94, maxDeleteRatio: 0.25, minKeepSeconds: 0.3 }),
     balanced: Object.freeze({ silenceSeconds: 0.8, preservePause: 0.2, duplicateSimilarity: 0.88, maxDeleteRatio: 0.4, minKeepSeconds: 0.25 }),
     tight: Object.freeze({ silenceSeconds: 0.55, preservePause: 0.15, duplicateSimilarity: 0.82, maxDeleteRatio: 0.55, minKeepSeconds: 0.2 }),
   });
-
   const RETAKE_SIGNALS = [
     /(?:아|어)?\s*(?:잠깐만|다시\s*(?:할게|갈게|가겠습니다|말할게|말씀드리겠습니다)|여기부터\s*다시|한\s*번\s*더)/i,
     /(?:let me|i(?:'|’)ll)\s+(?:start|say|do)\s+(?:that\s+)?again|take\s+(?:that|it)\s+again|start\s+over/i,
@@ -18,12 +18,15 @@
   const FILLERS = new Set(["어", "음", "아", "그", "뭐", "약간", "이제", "그러니까", "uh", "um", "erm", "hmm"]);
 
   function createEditPlan(segments, options) {
-    if (!Array.isArray(segments) || !segments.length) throw new Error("분석할 전사 구간이 없습니다.");
+    if (!Array.isArray(segments) || segments.length === 0) throw new Error("분석할 전사 구간이 없습니다.");
     const opts = options || {};
     const presetName = Object.prototype.hasOwnProperty.call(PRESETS, opts.preset) ? opts.preset : "balanced";
-    const rules = Object.assign({}, PRESETS[presetName], opts.rules || {});
-    const duration = Number.isFinite(opts.duration) ? Number(opts.duration) : segments[segments.length - 1].end;
+    const rules = Object.freeze(Object.assign({}, PRESETS[presetName], opts.rules || {}));
+    validateRules(rules);
+    const duration = Number.isFinite(opts.duration) ? Number(opts.duration) : Number(segments[segments.length - 1].end);
     if (!Number.isFinite(duration) || duration <= 0) throw new Error("원본 길이가 올바르지 않습니다.");
+    const transcriptEnd = segments.reduce((maximum, segment) => Math.max(maximum, Number(segment.end)), 0);
+    if (!Number.isFinite(transcriptEnd) || transcriptEnd > duration + 0.001) throw new Error("전사문 길이가 원본보다 깁니다.");
 
     const candidates = [];
     detectRetakes(segments, candidates);
@@ -31,14 +34,15 @@
     detectFillerRuns(segments, candidates);
     detectDuplicates(segments, candidates, rules);
     const merged = mergeCandidates(candidates, duration);
-    const selectedIds = selectSafeCandidates({ duration, candidates: merged, rules });
-    const approved = approveCandidates({ duration, candidates: merged, rules }, selectedIds);
+    const basePlan = Object.freeze({ duration, candidates: Object.freeze(merged), rules });
+    const selectedIds = selectSafeCandidates(basePlan);
+    const approved = approveCandidates(basePlan, selectedIds);
     return Object.freeze({
       version: 1,
       preset: presetName,
       duration,
-      rules: Object.freeze(rules),
-      candidates: Object.freeze(merged),
+      rules,
+      candidates: basePlan.candidates,
       selectedIds: Object.freeze(selectedIds),
       keepRanges: approved.keepRanges,
       stats: approved.stats,
@@ -47,36 +51,47 @@
 
   function selectSafeCandidates(plan) {
     const eligible = (plan.candidates || []).filter((candidate) => candidate.confidence >= 0.9)
-      .sort((a, b) => b.confidence - a.confidence || a.start - b.start || a.end - b.end);
+      .sort((left, right) => right.confidence - left.confidence || left.start - right.start || left.end - right.end);
     const selected = [];
     for (const candidate of eligible) {
-      const trial = selected.concat(candidate.id);
       try {
-        approveCandidates(plan, trial);
+        approveCandidates(plan, selected.concat(candidate.id));
         selected.push(candidate.id);
       } catch (error) {
-        if (!/안전 상한/.test(String(error && error.message))) throw error;
+        if (error?.code !== "PAI_APPROVAL_SAFETY") throw error;
       }
     }
     const order = new Map((plan.candidates || []).map((candidate, index) => [candidate.id, index]));
-    return selected.sort((a, b) => order.get(a) - order.get(b));
+    return selected.sort((left, right) => order.get(left) - order.get(right));
   }
 
   function approveCandidates(plan, selectedIds) {
-    const selected = new Set(selectedIds || []);
+    validatePlan(plan);
+    const candidateById = new Map(plan.candidates.map((candidate) => [String(candidate.id), candidate]));
+    const selected = new Set((selectedIds || []).map(String));
+    for (const id of selected) if (!candidateById.has(id)) throw new Error(`현재 편집안에 없는 삭제 후보입니다: ${id}`);
+
     const duration = Number(plan.duration);
     const rules = plan.rules || PRESETS.balanced;
-    const deletions = (plan.candidates || []).filter((candidate) => selected.has(candidate.id)).map((candidate) => ({ start: candidate.start, end: candidate.end }));
+    const deletions = [...selected].map((id) => candidateById.get(id)).map(({ start, end }) => ({ start, end }));
     const merged = mergeRanges(deletions, duration);
-    const deletedSeconds = merged.reduce((total, range) => total + range.end - range.start, 0);
-    if (deletedSeconds / duration > rules.maxDeleteRatio + 1e-9) {
-      throw new Error(`선택한 삭제량이 안전 상한 ${(rules.maxDeleteRatio * 100).toFixed(0)}%를 넘습니다.`);
+    const deletedSecondsRaw = merged.reduce((total, range) => total + range.end - range.start, 0);
+    if (deletedSecondsRaw / duration > rules.maxDeleteRatio + EPSILON) {
+      throw approvalSafetyError(`선택한 삭제량이 안전 상한 ${(rules.maxDeleteRatio * 100).toFixed(0)}%를 넘습니다.`);
     }
-    const keepRanges = invertRanges(merged, duration).filter((range) => range.end - range.start >= rules.minKeepSeconds);
-    if (!keepRanges.length) throw new Error("편집 후 남는 영상이 없습니다.");
+
+    const keepRanges = invertRanges(merged, duration);
+    if (keepRanges.length === 0) throw approvalSafetyError("편집 후 남는 영상이 없습니다.");
+    if (merged.length > 0) {
+      const short = keepRanges.find((range) => range.end - range.start + EPSILON < rules.minKeepSeconds);
+      if (short) throw approvalSafetyError(`선택 결과 ${rules.minKeepSeconds.toFixed(2)}초보다 짧은 유지 구간이 생깁니다. 삭제 후보 선택을 조정하십시오.`);
+    }
+
+    const keptSecondsRaw = keepRanges.reduce((total, range) => total + range.end - range.start, 0);
+    if (Math.abs(deletedSecondsRaw + keptSecondsRaw - duration) > 0.001) throw new Error("편집 구간 합계가 원본 길이와 일치하지 않습니다.");
     return Object.freeze({
-      keepRanges: Object.freeze(keepRanges.map(Object.freeze)),
-      stats: Object.freeze({ duration, deletedSeconds: round3(deletedSeconds), keptSeconds: round3(keepRanges.reduce((sum, range) => sum + range.end - range.start, 0)), selectedCount: deletions.length }),
+      keepRanges: Object.freeze(keepRanges.map((range) => Object.freeze(range))),
+      stats: Object.freeze({ duration: round3(duration), deletedSeconds: round3(deletedSecondsRaw), keptSeconds: round3(keptSecondsRaw), selectedCount: selected.size }),
     });
   }
 
@@ -125,8 +140,7 @@
       if (later.start - earlier.end > 3) continue;
       const similarity = textSimilarity(earlier.text, later.text);
       if (similarity < rules.duplicateSimilarity) continue;
-      const deleteEarlier = normalizeForCompare(later.text).length >= normalizeForCompare(earlier.text).length;
-      const target = deleteEarlier ? earlier : later;
+      const target = normalizeForCompare(later.text).length >= normalizeForCompare(earlier.text).length ? earlier : later;
       output.push(candidate("duplicate", target.start, target.end, Math.min(0.97, 0.75 + similarity * 0.22), `유사 반복 발화 ${(similarity * 100).toFixed(0)}%`));
     }
   }
@@ -138,26 +152,27 @@
       end: clamp(round3(item.end), 0, duration),
       confidence: clamp(item.confidence, 0, 1),
       reason: item.reason,
-    })).filter((item) => item.end - item.start >= 0.05).sort((a, b) => a.start - b.start || a.end - b.end);
+    })).filter((item) => item.end - item.start >= 0.05).sort((left, right) => left.start - right.start || left.end - right.end);
     const result = [];
     for (const item of normalized) {
-      const last = result[result.length - 1];
-      if (last && item.start <= last.end + 0.02) {
-        last.end = Math.max(last.end, item.end);
-        last.confidence = Math.max(last.confidence, item.confidence);
-        last.type = last.type === item.type ? last.type : "combined";
-        if (!last.reason.includes(item.reason)) last.reason += ` · ${item.reason}`;
+      const previous = result[result.length - 1];
+      if (previous && item.start <= previous.end + 0.02) {
+        previous.end = Math.max(previous.end, item.end);
+        previous.confidence = Math.max(previous.confidence, item.confidence);
+        previous.type = previous.type === item.type ? previous.type : "combined";
+        if (!previous.reason.includes(item.reason)) previous.reason += ` · ${item.reason}`;
       } else result.push(Object.assign({}, item));
     }
     return result.map((item, index) => Object.freeze(Object.assign({ id: `cut-${String(index + 1).padStart(4, "0")}` }, item)));
   }
 
   function mergeRanges(ranges, duration) {
-    const sorted = ranges.map((range) => ({ start: clamp(range.start, 0, duration), end: clamp(range.end, 0, duration) })).filter((range) => range.end > range.start).sort((a, b) => a.start - b.start || a.end - b.end);
+    const sorted = ranges.map((range) => ({ start: clamp(Number(range.start), 0, duration), end: clamp(Number(range.end), 0, duration) }))
+      .filter((range) => range.end > range.start).sort((left, right) => left.start - right.start || left.end - right.end);
     const result = [];
     for (const range of sorted) {
-      const last = result[result.length - 1];
-      if (last && range.start <= last.end) last.end = Math.max(last.end, range.end);
+      const previous = result[result.length - 1];
+      if (previous && range.start <= previous.end + EPSILON) previous.end = Math.max(previous.end, range.end);
       else result.push({ start: range.start, end: range.end });
     }
     return result.map((range) => ({ start: round3(range.start), end: round3(range.end) }));
@@ -167,39 +182,38 @@
     const keep = [];
     let cursor = 0;
     for (const deletion of deletions) {
-      if (deletion.start > cursor) keep.push({ start: round3(cursor), end: round3(deletion.start) });
+      if (deletion.start > cursor + EPSILON) keep.push({ start: round3(cursor), end: round3(deletion.start) });
       cursor = Math.max(cursor, deletion.end);
     }
-    if (cursor < duration) keep.push({ start: round3(cursor), end: round3(duration) });
+    if (cursor < duration - EPSILON) keep.push({ start: round3(cursor), end: round3(duration) });
     return keep;
   }
 
-  function candidate(type, start, end, confidence, reason) {
-    return { type, start, end, confidence, reason };
+  function validatePlan(plan) {
+    if (!plan || !Array.isArray(plan.candidates) || !Number.isFinite(Number(plan.duration)) || Number(plan.duration) <= 0) throw new Error("편집안이 올바르지 않습니다.");
+    validateRules(plan.rules || PRESETS.balanced);
+    const ids = new Set();
+    for (const item of plan.candidates) {
+      const id = String(item?.id || "");
+      if (!id || ids.has(id)) throw new Error("편집안의 삭제 후보 ID가 올바르지 않습니다.");
+      ids.add(id);
+    }
   }
 
-  function isFillerOnly(text) {
-    const tokens = tokenize(text);
-    return tokens.length > 0 && tokens.length <= 4 && tokens.every((token) => FILLERS.has(token));
+  function validateRules(rules) {
+    for (const name of ["silenceSeconds", "preservePause", "duplicateSimilarity", "maxDeleteRatio", "minKeepSeconds"]) {
+      if (!Number.isFinite(Number(rules?.[name]))) throw new Error(`편집 규칙 ${name} 값이 올바르지 않습니다.`);
+    }
+    if (rules.maxDeleteRatio <= 0 || rules.maxDeleteRatio >= 1) throw new Error("삭제량 안전 상한은 0과 1 사이여야 합니다.");
+    if (rules.minKeepSeconds <= 0) throw new Error("최소 유지 구간은 0보다 커야 합니다.");
   }
 
-  function textSimilarity(left, right) {
-    const a = new Set(tokenize(left));
-    const b = new Set(tokenize(right));
-    if (!a.size || !b.size) return 0;
-    let intersection = 0;
-    for (const token of a) if (b.has(token)) intersection += 1;
-    return intersection / Math.max(a.size, b.size);
-  }
-
-  function tokenize(text) {
-    return normalizeForCompare(text).split(/\s+/).filter(Boolean);
-  }
-
-  function normalizeForCompare(text) {
-    return String(text || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
-  }
-
+  function approvalSafetyError(message) { const error = new Error(message); error.code = "PAI_APPROVAL_SAFETY"; return error; }
+  function candidate(type, start, end, confidence, reason) { return { type, start, end, confidence, reason }; }
+  function isFillerOnly(text) { const tokens = tokenize(text); return tokens.length > 0 && tokens.length <= 4 && tokens.every((token) => FILLERS.has(token)); }
+  function textSimilarity(left, right) { const first = new Set(tokenize(left)); const second = new Set(tokenize(right)); if (!first.size || !second.size) return 0; let intersection = 0; for (const token of first) if (second.has(token)) intersection += 1; return intersection / Math.max(first.size, second.size); }
+  function tokenize(text) { return normalizeForCompare(text).split(/\s+/).filter(Boolean); }
+  function normalizeForCompare(text) { return String(text || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim(); }
   function clamp(value, min, max) { return Math.min(max, Math.max(min, Number(value))); }
   function round3(value) { return Math.round(Number(value) * 1000) / 1000; }
 

@@ -1,6 +1,6 @@
 (function (root, factory) {
   const api = factory();
-  if (typeof module === "object" && module.exports) module.exports = api;
+  if (typeof module === "object" && module.exports && typeof window === "undefined") module.exports = api;
   else root.PAI = Object.assign(root.PAI || {}, api);
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
@@ -27,9 +27,7 @@
 
   function buildHostFingerprint(value) {
     const environment = normalizeHostEnvironment(value);
-    return Object.entries(environment)
-      .map(([key, item]) => `${key}=${encodeURIComponent(item)}`)
-      .join("|");
+    return Object.entries(environment).map(([key, item]) => `${key}=${encodeURIComponent(item)}`).join("|");
   }
 
   function createCertification(environment, result, createdAt) {
@@ -41,10 +39,12 @@
     if (REQUIRED_CHECKS.some((name) => !checks[name])) {
       throw new Error("호스트 자체시험의 필수 검증 항목이 누락되었습니다.");
     }
+    const timestamp = String(createdAt || new Date().toISOString());
+    if (Number.isNaN(Date.parse(timestamp))) throw new Error("호스트 인증 완료 시간이 올바르지 않습니다.");
     return Object.freeze({
       formatVersion: CERTIFICATION_FORMAT,
       fingerprint: buildHostFingerprint(environment),
-      createdAt: createdAt || new Date().toISOString(),
+      createdAt: timestamp,
       checks: Object.freeze(checks),
     });
   }
@@ -52,8 +52,12 @@
   function isCertificationValid(value, environment) {
     const certification = normalizeCertification(value);
     if (!certification) return false;
-    if (certification.fingerprint !== buildHostFingerprint(environment)) return false;
-    return REQUIRED_CHECKS.every((name) => certification.checks[name] === true);
+    try {
+      return certification.fingerprint === buildHostFingerprint(environment)
+        && REQUIRED_CHECKS.every((name) => certification.checks[name] === true);
+    } catch (_) {
+      return false;
+    }
   }
 
   function serializeCertification(value) {
@@ -83,6 +87,13 @@
 
   function clearCertification(storage) {
     if (storage && typeof storage.removeItem === "function") storage.removeItem(CERTIFICATION_STORAGE_KEY);
+  }
+
+  function certificationSummary(value) {
+    const certification = normalizeCertification(value);
+    if (!certification) return "미인증";
+    const date = new Date(certification.createdAt);
+    return Number.isNaN(date.getTime()) ? "인증됨" : `인증됨 · ${date.toLocaleString()}`;
   }
 
   function normalizeCertification(value) {
@@ -115,5 +126,6 @@
     readCertification,
     writeCertification,
     clearCertification,
+    certificationSummary,
   };
 });

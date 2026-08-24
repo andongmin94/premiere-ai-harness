@@ -1,3 +1,5 @@
-# Adobe Premiere Pro UXP API contract
+# Adobe Premiere Pro 26.3 API contract
 
-`api-contract.json` records the public Premiere Pro 26.3 API surface used by the Core plugin. The source checksum corresponds to the reviewed Adobe public TypeScript declaration snapshot. The full Adobe declaration is not redistributed in this repository.
+This directory contains a small, reviewable list of the Adobe Premiere UXP API members exercised by Core 0.3.1. It is not a copy of Adobe's declarations and does not claim to replace type checking or real-host qualification.
+
+The contract was checked against Adobe's public API reference and official sample repository on 2026-08-22. Real Premiere testing remains mandatory before distribution.

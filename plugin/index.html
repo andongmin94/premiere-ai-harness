@@ -11,7 +11,9 @@
   <script src="lib/session-state.js"></script>
   <script src="lib/premiere-runtime.js"></script>
   <script src="lib/generated-assets.js"></script>
+  <script src="lib/generated-cleanup.js"></script>
   <script src="lib/premiere-adapter.js"></script>
+  <script src="lib/ui-view.js"></script>
   <script src="index.js"></script>
 </head>
 <body>
@@ -20,17 +22,17 @@
       <h1>Premiere AI Harness</h1>
       <p>대사 중심 영상의 안전한 러프컷</p>
     </div>
-    <span class="version">0.3.0</span>
+    <span class="version">0.3.1</span>
   </header>
 
   <main>
     <section class="card">
       <div class="section-heading">
         <h2>1. 원본과 호스트 확인</h2>
-        <span id="host-badge" class="badge" data-kind="pending">미인증</span>
+        <span id="host-badge" class="badge" data-state="pending">미인증</span>
       </div>
       <p class="help">프로젝트 패널에서 일반 원본 클립 하나를 선택합니다. 기존 시퀀스와 원본은 수정하지 않습니다.</p>
-      <div class="button-row">
+      <div class="button-row two">
         <button id="inspect">선택 클립 검사</button>
         <button id="host-self-test" class="secondary" disabled>호스트 자체시험</button>
       </div>
@@ -56,7 +58,7 @@
     <section class="card">
       <h2>3. 편집안 검토</h2>
       <label for="preset">편집 강도</label>
-      <select id="preset">
+      <select id="preset" disabled>
         <option value="conservative">보수적</option>
         <option value="balanced" selected>균형</option>
         <option value="tight">타이트</option>
