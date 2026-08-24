@@ -8,6 +8,7 @@
   "use strict";
 
   const MAX_OUTPUT_SEGMENTS = 500;
+  const ROLLBACK_PROBE_CODE = "PAI_INTENTIONAL_ROLLBACK_PROBE";
 
   async function inspectSelection(ppro) {
     const context = await getSupportedContext(ppro);
@@ -47,6 +48,8 @@
     try {
       await buildGeneratedSequence(ppro, context.clip, ranges, resources, Object.assign({}, settings, { frameRate: timing.frameRate }));
       return Object.freeze({
+        projectId: runtime.projectIdentity(context.project),
+        sequenceId: runtime.sequenceIdentity(resources.sequence),
         sequenceName: String(resources.sequence?.name || safeName),
         segmentCount: resources.subclips.length,
         operationId,
@@ -86,6 +89,76 @@
     } catch (error) {
       await rethrowAfterCleanup(error, resources, settings, previousActive, "자체시험 흔적 자동 정리에도 실패했습니다");
     }
+  }
+
+  async function runRollbackSelfTest(ppro, options) {
+    const settings = options || {};
+    const context = await getSupportedContext(ppro);
+    const timing = await runtime.readSourceTiming(context.clip);
+    const ranges = selfTestRange(timing.duration, timing.frameRate);
+    const parentBin = await runtime.maybePromise(context.clip.getParentBin());
+    if (!parentBin) throw new Error("선택 클립의 프로젝트 빈을 찾지 못했습니다.");
+
+    const operationId = runtime.makeOperationId(runtime.TEMP_PREFIX);
+    const resources = createResourceRecord(
+      ppro,
+      context.project,
+      parentBin,
+      operationId,
+      operationId,
+      1,
+      "_BIN",
+      "_CLIP",
+      await readSequenceBaseline(context.project)
+    );
+    const previousActive = await readActiveSequence(context.project);
+    let failureObserved = false;
+    try {
+      const frameRateObject = ppro.FrameRate.createWithValue(timing.frameRate);
+      if (!frameRateObject) throw new Error("Premiere 프레임레이트 객체를 만들지 못했습니다.");
+      await assets.createGeneratedBin(resources, ppro, settings);
+      await assets.createSubclips(resources.project, context.clip, ranges, resources.subclipNames, frameRateObject, ppro);
+      resources.subclips = await assets.waitForNamedClips(resources.parentBin, resources.subclipNames, ppro, settings);
+      await assets.moveItems(resources.project, resources.parentBin, resources.runBin, resources.subclips);
+      await assets.waitForNamedClips(resources.runBin, resources.subclipNames, ppro, settings);
+      failureObserved = true;
+      const probe = new Error("의도된 롤백 자체시험 오류");
+      probe.code = ROLLBACK_PROBE_CODE;
+      throw probe;
+    } catch (error) {
+      const cleanupResult = await cleanupApi.cleanupGenerated(resources, cleanupOptions(settings, previousActive));
+      if (!cleanupResult.cleaned) {
+        throw new Error(`${runtime.messageOf(error)} 롤백 자체시험 정리에도 실패했습니다: ${cleanupResult.errors.join(" / ")}`);
+      }
+      if (!failureObserved || error?.code !== ROLLBACK_PROBE_CODE) throw error;
+      return Object.freeze({
+        status: "PASS",
+        cleaned: true,
+        operationId,
+        checks: Object.freeze({ failureObserved: true, subclip: true, cleanup: true }),
+      });
+    }
+  }
+
+  async function verifyPersistedRoughCut(ppro, expected) {
+    if (!ppro?.Project?.getActiveProject) throw new Error("Premiere UXP API를 불러오지 못했습니다.");
+    if (expected?.status !== "PASS") throw new Error("검증할 러프컷 기록이 없습니다.");
+    const project = await ppro.Project.getActiveProject();
+    if (!project) throw new Error("열린 Premiere 프로젝트가 없습니다.");
+    const projectId = runtime.projectIdentity(project);
+    if (expected.projectId && projectId !== String(expected.projectId)) throw new Error("러프컷을 만든 Premiere 프로젝트를 다시 여십시오.");
+    const sequences = await project.getSequences() || [];
+    const expectedId = String(expected.sequenceId || "");
+    const expectedName = String(expected.sequenceName || "");
+    const sequence = sequences.find((item) => expectedId && runtime.sequenceIdentity(item) === expectedId)
+      || sequences.find((item) => String(item?.name || "") === expectedName);
+    if (!sequence) throw new Error(`저장 후 다시 열린 러프컷 시퀀스 “${expectedName}”을 찾지 못했습니다.`);
+    return Object.freeze({
+      status: "PASS",
+      projectId,
+      sequenceId: runtime.sequenceIdentity(sequence),
+      sequenceName: String(sequence.name || expectedName),
+    });
   }
 
   async function cleanupSelfTestArtifacts(ppro, options) {
@@ -186,6 +259,8 @@
     loadSelectedTranscript,
     createRoughCut,
     runHostSelfTest,
+    runRollbackSelfTest,
+    verifyPersistedRoughCut,
     cleanupSelfTestArtifacts,
     alignKeepRangesToFrames: runtime.alignKeepRangesToFrames,
   };
