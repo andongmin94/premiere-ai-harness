@@ -48,6 +48,12 @@
         : `${environment.hostName} ${environment.hostVersion} · UXP ${environment.uxpVersion} · 플러그인 ${environment.pluginVersion} · ${environment.platform}/${environment.arch}`;
     }
 
+    function setQualification(record, summary, report) {
+      byId("qualification-status").textContent = String(summary || "검증을 시작하지 않았습니다.");
+      byId("qualification-report").value = String(report || "");
+      byId("qualification-status").dataset.state = record?.status === "PASS" ? "pass" : "pending";
+    }
+
     function renderPlan(plan, onChange) {
       const root = byId("candidate-list");
       root.replaceChildren();
@@ -98,6 +104,12 @@
       byId("reset-data").disabled = busy;
       byId("preset").disabled = busy || !state.hasPlan;
       byId("apply").disabled = busy || !state.canApply;
+      byId("qualification-start").disabled = busy || !state.canStartQualification;
+      byId("rollback-self-test").disabled = busy || !state.canRunRollback;
+      byId("qualification-confirm-playback").disabled = busy || !state.canConfirmPlayback;
+      byId("qualification-confirm-persistence").disabled = busy || !state.canConfirmPersistence;
+      byId("qualification-reset").disabled = busy || !state.hasQualification;
+      for (const input of candidateInputs) input.disabled = busy;
     }
 
     function reset() {
@@ -112,6 +124,7 @@
       setStatus,
       setSelection,
       setHost,
+      setQualification,
       renderPlan,
       setPlanStats,
       selectedCandidateIds,
