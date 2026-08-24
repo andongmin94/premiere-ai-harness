@@ -1,23 +1,6 @@
 {
   "formatVersion": 1,
-  "status": "PASS",
-  "version": "0.3.1",
-  "verifiedCommit": "c5e40703f4e24a9c8b4c3b936b2c1ec43dd19905",
-  "runId": 32553459471,
-  "runAttempt": 1,
-  "verifyResult": "success",
-  "compareResult": "success",
-  "runners": [
-    "ubuntu-latest",
-    "windows-latest"
-  ],
-  "crossPlatformReproducible": true,
-  "artifacts": [
-    "PremiereAIHarness-Core-Linux",
-    "PremiereAIHarness-Core-Windows"
-  ],
-  "packageKind": "unsigned-uxp-source-directory",
-  "installable": false,
-  "treeSha256": "3eddd099e34ebf416c51374d49271d608e8ae297c72d9b876d4a2b78c2b8ace3",
-  "recordedAt": "2026-08-22T05:07:02.750Z"
+  "status": "PENDING",
+  "version": "0.4.0",
+  "reason": "Host qualification workflow is being integrated; awaiting GitHub-hosted Linux/Windows verification."
 }
