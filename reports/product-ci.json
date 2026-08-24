@@ -1,17 +1,6 @@
 {
   "formatVersion": 1,
-  "status": "PASS",
+  "status": "PENDING",
   "version": "0.3.1",
-  "verifiedCommit": "d491eb55981f576f861150fd9910f866589b1f62",
-  "runId": 32552691827,
-  "runAttempt": 1,
-  "runners": [
-    "ubuntu-latest",
-    "windows-latest"
-  ],
-  "artifact": "PremiereAIHarness-Core-Windows",
-  "packageKind": "unsigned-uxp-source-directory",
-  "installable": false,
-  "treeSha256": "3eddd099e34ebf416c51374d49271d608e8ae297c72d9b876d4a2b78c2b8ace3",
-  "recordedAt": "2026-08-22T04:49:38.825Z"
+  "reason": "Source packaging or CI policy changed; awaiting GitHub-hosted Linux/Windows verification."
 }

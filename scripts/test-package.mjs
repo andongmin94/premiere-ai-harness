@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { packagePlugin } from "./package-plugin.mjs";
+import { normalizeTextForPackage, packagePlugin } from "./package-plugin.mjs";
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "pai-package-test-"));
+assert.equal(normalizeTextForPackage("a\r\nb\rc\n"), "a\nb\nc\n", "text packaging must normalize CRLF and CR to LF");
 try {
   const first = packagePlugin(path.join(temp, "one"));
   const second = packagePlugin(path.join(temp, "two"));

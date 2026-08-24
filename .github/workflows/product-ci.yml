@@ -32,18 +32,61 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run verify
       - uses: actions/upload-artifact@v4
-        if: runner.os == 'Windows'
         with:
-          name: PremiereAIHarness-Core-Windows
+          name: PremiereAIHarness-Core-${{ runner.os }}
           path: |
             dist/PremiereAIHarness-Core-0.3.1-uxp-source/
             dist/PremiereAIHarness-Core-0.3.1-uxp-source.manifest.json
           if-no-files-found: error
           retention-days: 30
 
+  compare:
+    name: Compare Linux and Windows packages
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: PremiereAIHarness-Core-*
+          path: artifacts
+      - name: Require byte-identical package manifests
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const artifactNames = ["PremiereAIHarness-Core-Linux", "PremiereAIHarness-Core-Windows"];
+          const manifests = artifactNames.map((artifactName) => {
+            const file = path.join("artifacts", artifactName, "PremiereAIHarness-Core-0.3.1-uxp-source.manifest.json");
+            return { artifactName, value: JSON.parse(fs.readFileSync(file, "utf8")) };
+          });
+          const [linux, windows] = manifests;
+          if (linux.value.treeSha256 !== windows.value.treeSha256) {
+            throw new Error(`cross-platform tree mismatch: ${linux.value.treeSha256} != ${windows.value.treeSha256}`);
+          }
+          const compact = (value) => JSON.stringify(value.entries.map(({ path, bytes, sha256 }) => ({ path, bytes, sha256 })));
+          if (compact(linux.value) !== compact(windows.value)) {
+            throw new Error("cross-platform package entry manifests differ");
+          }
+          fs.writeFileSync("cross-platform-package.json", `${JSON.stringify({
+            formatVersion: 1,
+            status: "PASS",
+            version: linux.value.version,
+            treeSha256: linux.value.treeSha256,
+            artifacts: artifactNames
+          }, null, 2)}\n`);
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PremiereAIHarness-Core-CrossPlatformReceipt
+          path: cross-platform-package.json
+          if-no-files-found: error
+          retention-days: 30
+
   record:
     name: Record verified main
-    needs: verify
+    needs: compare
     if: ${{ success() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -56,6 +99,10 @@ jobs:
         with:
           node-version: "22"
           cache: npm
+      - uses: actions/download-artifact@v4
+        with:
+          name: PremiereAIHarness-Core-CrossPlatformReceipt
+          path: ci-receipt
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run package
       - name: Create machine-readable verification receipt
@@ -67,8 +114,11 @@ jobs:
         run: |
           node <<'NODE'
           const fs = require("node:fs");
-          const manifestPath = "dist/PremiereAIHarness-Core-0.3.1-uxp-source.manifest.json";
-          const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+          const manifest = JSON.parse(fs.readFileSync("dist/PremiereAIHarness-Core-0.3.1-uxp-source.manifest.json", "utf8"));
+          const crossPlatform = JSON.parse(fs.readFileSync("ci-receipt/cross-platform-package.json", "utf8"));
+          if (manifest.treeSha256 !== crossPlatform.treeSha256) {
+            throw new Error(`record package mismatch: ${manifest.treeSha256} != ${crossPlatform.treeSha256}`);
+          }
           fs.mkdirSync("reports", { recursive: true });
           fs.writeFileSync("reports/product-ci.json", `${JSON.stringify({
             formatVersion: 1,
@@ -78,7 +128,8 @@ jobs:
             runId: Number(process.env.RUN_ID),
             runAttempt: Number(process.env.RUN_ATTEMPT),
             runners: ["ubuntu-latest", "windows-latest"],
-            artifact: "PremiereAIHarness-Core-Windows",
+            crossPlatformReproducible: true,
+            artifacts: ["PremiereAIHarness-Core-Linux", "PremiereAIHarness-Core-Windows"],
             packageKind: manifest.packageKind,
             installable: manifest.installable,
             treeSha256: manifest.treeSha256,
@@ -98,5 +149,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add reports/product-ci.json
           git diff --cached --quiet && exit 0
-          git commit -m "ci: record Core 0.3.1 verification [skip ci]"
+          git commit -m "ci: record reproducible Core 0.3.1 verification [skip ci]"
           git push origin HEAD:main

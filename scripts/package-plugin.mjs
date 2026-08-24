@@ -4,6 +4,8 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const TEXT_EXTENSIONS = new Set([".css", ".html", ".js", ".json", ".md", ".txt"]);
+const TEXT_FILENAMES = new Set(["LICENSE", "NOTICE"]);
 
 export function packagePlugin(outputDirectory = defaultOutputDirectory()) {
   const pluginDir = path.join(root, "plugin");
@@ -11,8 +13,8 @@ export function packagePlugin(outputDirectory = defaultOutputDirectory()) {
   fs.rmSync(outputDirectory, { recursive: true, force: true });
   fs.mkdirSync(outputDirectory, { recursive: true });
   copyDirectory(pluginDir, outputDirectory);
-  fs.copyFileSync(path.join(root, "LICENSE"), path.join(outputDirectory, "LICENSE"));
-  fs.copyFileSync(path.join(root, "NOTICE"), path.join(outputDirectory, "NOTICE"));
+  copyFileForPackage(path.join(root, "LICENSE"), path.join(outputDirectory, "LICENSE"));
+  copyFileForPackage(path.join(root, "NOTICE"), path.join(outputDirectory, "NOTICE"));
 
   const entries = listFiles(outputDirectory).map((file) => {
     const data = fs.readFileSync(file);
@@ -53,11 +55,25 @@ function copyDirectory(source, destination) {
       fs.mkdirSync(to, { recursive: true });
       copyDirectory(from, to);
     } else if (entry.isFile()) {
-      fs.copyFileSync(from, to);
+      copyFileForPackage(from, to);
     } else {
       throw new Error(`Unsupported source entry: ${from}`);
     }
   }
+}
+
+function copyFileForPackage(source, destination) {
+  const extension = path.extname(source).toLowerCase();
+  const filename = path.basename(source);
+  if (TEXT_EXTENSIONS.has(extension) || TEXT_FILENAMES.has(filename)) {
+    fs.writeFileSync(destination, normalizeTextForPackage(fs.readFileSync(source, "utf8")), "utf8");
+    return;
+  }
+  fs.copyFileSync(source, destination);
+}
+
+export function normalizeTextForPackage(value) {
+  return String(value).replace(/\r\n?/g, "\n");
 }
 
 function listFiles(directory) {
