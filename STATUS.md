@@ -25,6 +25,8 @@
 - Linux/Windows 교차 플랫폼 재현 패키징
 - 결정론적 unsigned UXP source directory 생성
 
+자동 검증의 기계 판독 영수증은 `reports/product-ci.json`에 기록하며, `status: PASS`와 검증 대상 커밋을 함께 확인해야 합니다.
+
 ## 남은 실제 Adobe 호스트 게이트
 
 - Adobe UXP Developer Tool에서 source directory 로드
