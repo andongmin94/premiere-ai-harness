@@ -1,5 +1,6 @@
 name: Product CI
 # GitHub-hosted runners only; no self-hosted runner is required.
+# Package paths and receipt versions are derived from the current manifest.
 
 on:
   push:
