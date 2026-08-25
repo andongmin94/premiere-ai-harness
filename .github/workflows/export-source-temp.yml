@@ -1,0 +1,39 @@
+name: Temporary source export
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/export-source-temp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: premiere-ai-harness-current-source
+          path: |
+            .
+            !.git/**
+            !node_modules/**
+            !dist/**
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+      - name: Record run id
+        env:
+          RUN_ID: ${{ github.run_id }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          mkdir -p temp
+          printf '{"runId":%s,"headSha":"%s"}\n' "$RUN_ID" "$HEAD_SHA" > temp/source-export-run.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add temp/source-export-run.json
+          git commit -m "chore: record temporary source export [skip ci]"
+          git push origin HEAD:main
