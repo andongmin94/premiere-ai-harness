@@ -30,12 +30,13 @@ const indexJs = read(path.join(pluginDir, "index.js"));
 const pluginJsText = walk(pluginDir).filter((file) => file.endsWith(".js")).map(read).join("\n");
 const htmlIds = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
 const referencedIds = new Set([...pluginJsText.matchAll(/\b(?:byId|bind)\("([^"]+)"/g)].map((match) => match[1]));
-for (const id of referencedIds) assert(htmlIds.has(id), `index.js references missing DOM id: ${id}`);
+for (const id of referencedIds) assert(htmlIds.has(id), `plugin JavaScript references missing DOM id: ${id}`);
 
 const scriptSources = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((match) => match[1]);
 const expectedScripts = [
-  "lib/transcript.js", "lib/planner.js", "lib/host-certification.js", "lib/session-state.js",
-  "lib/premiere-runtime.js", "lib/generated-assets.js", "lib/generated-cleanup.js", "lib/premiere-adapter.js", "lib/ui-view.js", "index.js",
+  "lib/transcript.js", "lib/planner.js", "lib/host-certification.js", "lib/host-qualification.js",
+  "lib/session-state.js", "lib/premiere-runtime.js", "lib/generated-assets.js", "lib/generated-cleanup.js",
+  "lib/premiere-adapter.js", "lib/qualification-flow.js", "lib/ui-view.js", "index.js",
 ];
 assert(JSON.stringify(scriptSources) === JSON.stringify(expectedScripts), "index.html script order is incorrect");
 for (const source of scriptSources) assert(fs.existsSync(path.join(pluginDir, source)), `missing script: ${source}`);
@@ -62,18 +63,26 @@ for (const obsolete of [
   ".github/workflows/pre-premiere-e2e.yml", ".github/workflows/host-gate-ci.yml",
 ]) assert(!fs.existsSync(path.join(root, obsolete)), `obsolete path must be removed: ${obsolete}`);
 
-checkReportsDirectory();
+validateReceipt();
 checkAdobeContract(pluginText);
 console.log(`CHECK PASS: ${jsFiles.length} JavaScript files, ${htmlIds.size} DOM ids, Adobe 26.3 contract, version ${manifest.version}`);
 
-function checkReportsDirectory() {
-  const directory = path.join(root, "reports");
-  if (!fs.existsSync(directory)) return;
-  const entries = fs.readdirSync(directory, { withFileTypes: true });
-  assert(entries.length === 1 && entries[0].isFile() && entries[0].name === "product-ci.json", "reports may contain only product-ci.json");
-  const receipt = readJson(path.join(directory, "product-ci.json"));
-  assert(receipt.formatVersion === 1 && receipt.version === manifest.version, "invalid product CI receipt version");
-  assert(["PENDING", "PASS", "FAIL"].includes(receipt.status), "invalid product CI receipt status");
+function validateReceipt() {
+  const reportsDir = path.join(root, "reports");
+  if (!fs.existsSync(reportsDir)) return;
+  const entries = fs.readdirSync(reportsDir).sort();
+  assert(JSON.stringify(entries) === JSON.stringify(["product-ci.json"]), "reports may contain only product-ci.json");
+  const receipt = readJson(path.join(reportsDir, "product-ci.json"));
+  assert(receipt.formatVersion === 1, "CI receipt format is invalid");
+  assert(receipt.version === manifest.version, "CI receipt version differs from the product version");
+  assert(["PENDING", "PASS", "FAIL"].includes(receipt.status), "CI receipt status is invalid");
+  if (receipt.status === "PASS") {
+    assert(receipt.packageKind === "unsigned-uxp-source-directory", "CI receipt package kind is invalid");
+    assert(receipt.installable === false, "unsigned source must not be marked installable");
+    assert(/^[a-f0-9]{64}$/.test(receipt.treeSha256 || ""), "CI receipt tree SHA-256 is invalid");
+    assert(typeof receipt.verifiedCommit === "string" && receipt.verifiedCommit.length >= 7, "CI receipt commit is missing");
+  }
+  if (receipt.status === "PENDING") assert(typeof receipt.reason === "string" && receipt.reason.length > 0, "pending CI receipt needs a reason");
 }
 
 function checkAdobeContract(text) {
