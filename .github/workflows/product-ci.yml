@@ -35,8 +35,8 @@ jobs:
         with:
           name: PremiereAIHarness-Core-${{ runner.os }}
           path: |
-            dist/PremiereAIHarness-Core-0.3.1-uxp-source/
-            dist/PremiereAIHarness-Core-0.3.1-uxp-source.manifest.json
+            dist/PremiereAIHarness-Core-*-uxp-source/
+            dist/PremiereAIHarness-Core-*-uxp-source.manifest.json
           if-no-files-found: error
           retention-days: 30
 
@@ -56,16 +56,35 @@ jobs:
           node <<'NODE'
           const fs = require("node:fs");
           const path = require("node:path");
+
           const artifactNames = ["PremiereAIHarness-Core-Linux", "PremiereAIHarness-Core-Windows"];
-          const manifests = artifactNames.map((artifactName) => {
-            const file = path.join("artifacts", artifactName, "PremiereAIHarness-Core-0.3.1-uxp-source.manifest.json");
-            return { artifactName, value: JSON.parse(fs.readFileSync(file, "utf8")) };
-          });
+          function findManifest(directory) {
+            const matches = fs.readdirSync(directory)
+              .filter((name) => name.endsWith("-uxp-source.manifest.json"));
+            if (matches.length !== 1) {
+              throw new Error(`expected one source manifest in ${directory}, found ${matches.length}`);
+            }
+            return path.join(directory, matches[0]);
+          }
+
+          const manifests = artifactNames.map((artifactName) => ({
+            artifactName,
+            value: JSON.parse(fs.readFileSync(findManifest(path.join("artifacts", artifactName)), "utf8")),
+          }));
           const [linux, windows] = manifests;
+          if (linux.value.version !== windows.value.version) {
+            throw new Error(`cross-platform version mismatch: ${linux.value.version} != ${windows.value.version}`);
+          }
+          if (linux.value.packageKind !== windows.value.packageKind
+            || linux.value.installable !== windows.value.installable) {
+            throw new Error("cross-platform package metadata differs");
+          }
           if (linux.value.treeSha256 !== windows.value.treeSha256) {
             throw new Error(`cross-platform tree mismatch: ${linux.value.treeSha256} != ${windows.value.treeSha256}`);
           }
-          const compact = (value) => JSON.stringify(value.entries.map(({ path, bytes, sha256 }) => ({ path, bytes, sha256 })));
+          const compact = (value) => JSON.stringify(
+            value.entries.map(({ path: entryPath, bytes, sha256 }) => ({ path: entryPath, bytes, sha256 }))
+          );
           if (compact(linux.value) !== compact(windows.value)) {
             throw new Error("cross-platform package entry manifests differ");
           }
@@ -73,8 +92,10 @@ jobs:
             formatVersion: 1,
             status: "PASS",
             version: linux.value.version,
+            packageKind: linux.value.packageKind,
+            installable: linux.value.installable,
             treeSha256: linux.value.treeSha256,
-            artifacts: artifactNames
+            artifacts: artifactNames,
           }, null, 2)}\n`);
           NODE
       - uses: actions/upload-artifact@v4
@@ -120,11 +141,13 @@ jobs:
         run: |
           node <<'NODE'
           const fs = require("node:fs");
+          const path = require("node:path");
+          const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
           const passed = process.env.VERIFY_RESULT === "success" && process.env.COMPARE_RESULT === "success";
           const receipt = {
             formatVersion: 1,
             status: passed ? "PASS" : "FAIL",
-            version: "0.3.1",
+            version: packageJson.version,
             verifiedCommit: process.env.VERIFIED_SHA,
             runId: Number(process.env.RUN_ID),
             runAttempt: Number(process.env.RUN_ATTEMPT),
@@ -136,11 +159,19 @@ jobs:
             packageKind: null,
             installable: false,
             treeSha256: null,
-            recordedAt: new Date().toISOString()
+            recordedAt: new Date().toISOString(),
           };
           if (passed) {
-            const manifest = JSON.parse(fs.readFileSync("dist/PremiereAIHarness-Core-0.3.1-uxp-source.manifest.json", "utf8"));
+            const manifestFiles = fs.readdirSync("dist")
+              .filter((name) => name.endsWith("-uxp-source.manifest.json"));
+            if (manifestFiles.length !== 1) {
+              throw new Error(`expected one local package manifest, found ${manifestFiles.length}`);
+            }
+            const manifest = JSON.parse(fs.readFileSync(path.join("dist", manifestFiles[0]), "utf8"));
             const crossPlatform = JSON.parse(fs.readFileSync("ci-receipt/cross-platform-package.json", "utf8"));
+            if (manifest.version !== packageJson.version || manifest.version !== crossPlatform.version) {
+              throw new Error("recorded package version differs from the repository version");
+            }
             if (manifest.treeSha256 !== crossPlatform.treeSha256) {
               throw new Error(`record package mismatch: ${manifest.treeSha256} != ${crossPlatform.treeSha256}`);
             }
@@ -165,5 +196,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add reports/product-ci.json
           git diff --cached --quiet && exit 0
-          git commit -m "ci: record Core 0.3.1 result [skip ci]"
+          git commit -m "ci: record product verification [skip ci]"
           git push origin HEAD:main
