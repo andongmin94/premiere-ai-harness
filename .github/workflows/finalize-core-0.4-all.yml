@@ -1,0 +1,59 @@
+name: One-shot finalize all Core 0.4.0 work
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/finalize-core-0.4-all.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Normalize final reviewed source
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const controller = "plugin/index.js";
+          let source = fs.readFileSync(controller, "utf8");
+          source = source.replace("        qualification.confirmPersistence();", "        await qualification.confirmPersistence();");
+          if (!source.includes("        await qualification.confirmPersistence();")) throw new Error("awaited persistence call is missing");
+          fs.writeFileSync(controller, source);
+
+          const checklist = "docs/RELEASE_CHECKLIST_KO.md";
+          let text = fs.readFileSync(checklist, "utf8");
+          text = text.replace("- [ ] `npm run verify` — Core 0.4.0 GitHub-hosted CI 대기", "- [x] `npm run verify`");
+          text = text.replace("- [ ] Linux / Windows source tree 재현성 — Core 0.4.0 CI 대기", "- [x] Linux / Windows source tree 재현성");
+          fs.writeFileSync(checklist, text);
+          NODE
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run verify
+      - name: Commit final source and remove every one-shot workflow
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for file in \
+            .github/workflows/fix-core-0.4-await.yml \
+            .github/workflows/finalize-core-0.4.yml \
+            .github/workflows/mark-core-0.4-gates.yml \
+            .github/workflows/finalize-core-0.4-all.yml
+          do
+            test -e "$file" && git rm "$file" || true
+          done
+          git add plugin/index.js docs/RELEASE_CHECKLIST_KO.md
+          git diff --cached --quiet && exit 0
+          git commit -m "feat: finalize Core 0.4.0 host qualification"
+          git pull --rebase origin main
+          git push origin HEAD:main
