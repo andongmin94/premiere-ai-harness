@@ -43,6 +43,12 @@
     return plan;
   }
 
+  function clearPlan(session) {
+    requireSession(session);
+    session.plan = null;
+    return session;
+  }
+
   function resetAnalysis(session) {
     requireSession(session);
     session.transcript = null;
@@ -106,6 +112,7 @@
     setSelection,
     setTranscript,
     setPlan,
+    clearPlan,
     resetAnalysis,
     resetSession,
     setBusy,
