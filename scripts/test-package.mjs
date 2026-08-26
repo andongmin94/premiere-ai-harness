@@ -16,10 +16,10 @@ try {
 
   const expected = [
     "LICENSE", "NOTICE", "README.txt", "index.html", "index.js",
-    "lib/generated-assets.js", "lib/generated-cleanup.js", "lib/host-certification.js",
-    "lib/host-qualification.js", "lib/planner.js", "lib/premiere-adapter.js",
-    "lib/premiere-runtime.js", "lib/qualification-flow.js", "lib/session-state.js",
-    "lib/transcript.js", "lib/ui-view.js", "manifest.json", "styles.css",
+    "lib/editor-flow.js", "lib/generated-assets.js", "lib/generated-cleanup.js",
+    "lib/host-certification.js", "lib/host-qualification.js", "lib/planner.js",
+    "lib/premiere-adapter.js", "lib/premiere-runtime.js", "lib/qualification-flow.js",
+    "lib/session-state.js", "lib/transcript.js", "lib/ui-view.js", "manifest.json", "styles.css",
   ];
   assert.deepEqual(first.entries.map((entry) => entry.path), expected.sort((left, right) => left.localeCompare(right, "en")));
   const manifest = JSON.parse(fs.readFileSync(path.join(first.outputDirectory, "manifest.json"), "utf8"));
