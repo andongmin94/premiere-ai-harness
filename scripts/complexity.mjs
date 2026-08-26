@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pluginRoot = path.join(root, "plugin");
-const MAX_FILE_LINES = 420;
+const MAX_FILE_LINES = 320;
 const MAX_DECISIONS = 120;
 const MAX_INDENT_DEPTH = 10;
 const MAX_AVERAGE_FILE_LINES = 240;
