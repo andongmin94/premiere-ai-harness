@@ -1,0 +1,41 @@
+name: One-shot Core 0.4.0 persistence await fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/fix-core-0.4-await.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply the reviewed one-line controller fix
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const file = "plugin/index.js";
+          const before = "        qualification.confirmPersistence();";
+          const after = "        await qualification.confirmPersistence();";
+          const source = fs.readFileSync(file, "utf8");
+          const matches = source.split(before).length - 1;
+          if (matches !== 1) throw new Error(`expected one persistence call, found ${matches}`);
+          fs.writeFileSync(file, source.replace(before, after));
+          NODE
+      - name: Commit the fix and remove this one-shot workflow
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/fix-core-0.4-await.yml
+          git add plugin/index.js
+          git commit -m "fix: await persistence qualification result"
+          git pull --rebase origin main
+          git push origin HEAD:main
