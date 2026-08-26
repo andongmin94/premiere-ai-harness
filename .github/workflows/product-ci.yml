@@ -40,6 +40,30 @@ jobs:
             dist/PremiereAIHarness-Core-*-uxp-source.manifest.json
           if-no-files-found: error
           retention-days: 30
+      - name: Create exact source snapshot
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git archive --format=zip --output=premiere-ai-harness-source.zip HEAD
+          node <<'NODE'
+          const fs = require("node:fs");
+          fs.writeFileSync("SOURCE_SNAPSHOT.json", `${JSON.stringify({
+            formatVersion: 1,
+            repository: process.env.GITHUB_REPOSITORY,
+            commit: process.env.GITHUB_SHA,
+            branch: process.env.GITHUB_REF_NAME,
+          }, null, 2)}\n`);
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: PremiereAIHarness-Source-Snapshot
+          path: |
+            premiere-ai-harness-source.zip
+            SOURCE_SNAPSHOT.json
+          if-no-files-found: error
+          retention-days: 30
 
   compare:
     name: Compare Linux and Windows packages
@@ -157,6 +181,7 @@ jobs:
             runners: ["ubuntu-latest", "windows-latest"],
             crossPlatformReproducible: false,
             artifacts: ["PremiereAIHarness-Core-Linux", "PremiereAIHarness-Core-Windows"],
+            sourceArtifact: "PremiereAIHarness-Source-Snapshot",
             packageKind: null,
             installable: false,
             treeSha256: null,
