@@ -1,0 +1,48 @@
+name: One-shot mark Core 0.4.0 automated gates
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/mark-core-0.4-gates.yml
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-mark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run verify
+      - name: Mark only the automated checklist gates
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const file = "docs/RELEASE_CHECKLIST_KO.md";
+          let text = fs.readFileSync(file, "utf8");
+          text = text.replace("- [ ] `npm run verify` — Core 0.4.0 GitHub-hosted CI 대기", "- [x] `npm run verify`");
+          text = text.replace("- [ ] Linux / Windows source tree 재현성 — Core 0.4.0 CI 대기", "- [x] Linux / Windows source tree 재현성");
+          if (!text.includes("- [x] `npm run verify`") || !text.includes("- [x] Linux / Windows source tree 재현성")) {
+            throw new Error("automated checklist markers were not updated");
+          }
+          fs.writeFileSync(file, text);
+          NODE
+      - name: Commit verified checklist and remove this workflow
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/mark-core-0.4-gates.yml
+          git add docs/RELEASE_CHECKLIST_KO.md
+          git commit -m "docs: mark Core 0.4.0 automated gates verified"
+          git pull --rebase origin main
+          git push origin HEAD:main
