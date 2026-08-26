@@ -36,7 +36,7 @@ const scriptSources = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((match)
 const expectedScripts = [
   "lib/transcript.js", "lib/planner.js", "lib/host-certification.js", "lib/host-qualification.js",
   "lib/session-state.js", "lib/premiere-runtime.js", "lib/generated-assets.js", "lib/generated-cleanup.js",
-  "lib/premiere-adapter.js", "lib/qualification-flow.js", "lib/ui-view.js", "index.js",
+  "lib/premiere-adapter.js", "lib/qualification-flow.js", "lib/editor-flow.js", "lib/ui-view.js", "index.js",
 ];
 assert(JSON.stringify(scriptSources) === JSON.stringify(expectedScripts), "index.html script order is incorrect");
 for (const source of scriptSources) assert(fs.existsSync(path.join(pluginDir, source)), `missing script: ${source}`);
@@ -58,8 +58,9 @@ for (const file of ["README.md", "STATUS.md", "docs/STATUS.md", "plugin/README.t
   assert(read(path.join(root, file)).includes(manifest.version), `${file} does not mention current version ${manifest.version}`);
 }
 for (const obsolete of [
-  "helper", "tools", ".bootstrap", "audit", "scripts/lib/zip.mjs",
-  ".github/workflows/audit-source-export.yml", ".github/workflows/offline-kit-ci.yml",
+  "helper", "tools", ".bootstrap", "audit", "temp", "scripts/lib/zip.mjs",
+  ".github/workflows/audit-source-export.yml", ".github/workflows/export-source-temp.yml",
+  ".github/workflows/offline-kit-ci.yml",
   ".github/workflows/pre-premiere-e2e.yml", ".github/workflows/host-gate-ci.yml",
 ]) assert(!fs.existsSync(path.join(root, obsolete)), `obsolete path must be removed: ${obsolete}`);
 

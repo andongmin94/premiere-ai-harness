@@ -2,13 +2,12 @@
   if (typeof module === "object" && module.exports && typeof window === "undefined") {
     module.exports = factory(Object.assign(
       {},
-      require("./lib/transcript.js"),
-      require("./lib/planner.js"),
       require("./lib/host-certification.js"),
       require("./lib/host-qualification.js"),
       require("./lib/session-state.js"),
       require("./lib/premiere-adapter.js"),
       require("./lib/qualification-flow.js"),
+      require("./lib/editor-flow.js"),
       require("./lib/ui-view.js")
     ));
   } else {
@@ -40,6 +39,7 @@
     let ppro = null;
     let hostEnvironment = null;
     let certification = null;
+
     const qualification = PAI.createQualificationFlow({
       storage,
       view,
@@ -47,6 +47,14 @@
       getEnvironment: function () { return hostEnvironment; },
       getSelection: function () { return session.selection; },
       getPpro,
+    });
+    const editor = PAI.createEditorFlow({
+      session,
+      view,
+      qualification,
+      getPpro,
+      requireCertified: requireValidCertification,
+      onStateChanged: refreshControls,
     });
 
     function initialize() {
@@ -66,7 +74,7 @@
       view.bind("analyze-pasted", "click", analyzePastedTranscript);
       view.bind("apply", "click", applyRoughCut);
       view.bind("reset-data", "click", resetPluginData);
-      view.bind("preset", "change", rebuildPlan);
+      view.bind("preset", "change", editor.rebuildPlan);
       view.bind("qualification-start", "click", startQualification);
       view.bind("rollback-self-test", "click", runRollbackSelfTest);
       view.bind("qualification-confirm-playback", "click", confirmQualificationPlayback);
@@ -96,21 +104,13 @@
       }
     }
 
-    async function inspectSelection() {
-      await withBusy(async function () {
-        const selection = await PAI.inspectSelection(getPpro());
-        PAI.resetAnalysis(session);
-        PAI.setSelection(session, selection);
-        view.byId("transcript-input").value = "";
-        view.setSelection(session.selection);
-        view.renderPlan(null, handleCandidateChange);
-        qualification.render();
-        view.setStatus("선택 클립을 확인했습니다. 기존 분석 상태를 초기화했습니다.", "success");
-      });
-    }
+    function inspectSelection() { return withBusy(editor.inspectSelection); }
+    function loadPremiereTranscript() { return withBusy(editor.loadPremiereTranscript); }
+    function analyzePastedTranscript() { return withBusy(editor.analyzePastedTranscript); }
+    function applyRoughCut() { return withBusy(editor.applyRoughCut); }
 
     async function runHostSelfTest() {
-      await withBusy(async function () {
+      return withBusy(async function () {
         if (!session.selection) throw new Error("먼저 선택 클립을 검사하십시오.");
         if (!hostEnvironment) throw new Error("Premiere 호스트 정보를 읽지 못했습니다.");
         const result = await PAI.runHostSelfTest(getPpro());
@@ -121,129 +121,36 @@
       });
     }
 
-    async function runRollbackSelfTest() {
-      await withBusy(async function () {
+    function runRollbackSelfTest() {
+      return withBusy(async function () {
         await qualification.runRollbackSelfTest();
         view.setStatus("의도된 실패와 생성 자산 롤백을 모두 확인했습니다.", "success");
       });
     }
 
-    async function cleanupSelfTestArtifacts() {
-      await withBusy(async function () {
+    function cleanupSelfTestArtifacts() {
+      return withBusy(async function () {
         const result = await PAI.cleanupSelfTestArtifacts(getPpro());
         view.setStatus(`자체시험 흔적 정리 완료 · 빈 ${result.removedBins}개 · 시퀀스 ${result.removedSequences}개`, "success");
       });
     }
 
-    async function loadPremiereTranscript() {
-      await withBusy(async function () {
-        if (!session.selection) throw new Error("먼저 선택 클립을 검사하십시오.");
-        const loaded = await PAI.loadSelectedTranscript(getPpro());
-        if (!sameSelection(session.selection, loaded)) throw new Error("선택 클립이 바뀌었습니다. 다시 검사하십시오.");
-        const segments = PAI.parseTranscriptJson(JSON.parse(loaded.json));
-        commitTranscript(loaded, { source: "premiere", raw: loaded.json, segments });
-        qualification.recordPremiereTranscript(loaded, segments.length);
-        view.setStatus(`Premiere 전사문 ${segments.length}개 구간을 분석했습니다.`, "success");
-      });
-    }
-
-    async function analyzePastedTranscript() {
-      await withBusy(async function () {
-        if (!session.selection) throw new Error("먼저 선택 클립을 검사하십시오.");
-        const segments = PAI.parseTranscript(view.byId("transcript-input").value);
-        const transcriptEnd = segments[segments.length - 1].end;
-        if (transcriptEnd > session.selection.duration + 0.25) {
-          throw new Error("전사문 길이가 선택한 원본보다 깁니다. 다른 클립의 전사문인지 확인하십시오.");
-        }
-        commitTranscript(session.selection, { source: "pasted", raw: null, segments });
-        view.setStatus(`붙여넣은 전사문 ${segments.length}개 구간을 분석했습니다.`, "success");
-      });
-    }
-
-    function commitTranscript(selection, transcript) {
-      const plan = PAI.createEditPlan(transcript.segments, {
-        preset: view.byId("preset").value,
-        duration: selection.duration,
-      });
-      PAI.setSelection(session, selection);
-      PAI.setTranscript(session, transcript);
-      PAI.setPlan(session, plan);
-      view.setSelection(session.selection);
-      renderPlan();
-    }
-
-    function rebuildPlan() {
-      if (!session.transcript || session.segments.length === 0) return;
-      try {
-        const plan = PAI.createEditPlan(session.segments, {
-          preset: view.byId("preset").value,
-          duration: session.selection.duration,
-        });
-        PAI.setPlan(session, plan);
-        renderPlan();
-      } catch (error) {
-        session.plan = null;
-        view.renderPlan(null, handleCandidateChange);
-        view.setStatus(messageOf(error), "error");
-        refreshControls();
-      }
-    }
-
-    function renderPlan() {
-      view.renderPlan(session.plan, handleCandidateChange);
-      handleCandidateChange();
-    }
-
-    function handleCandidateChange() {
-      if (!session.plan) {
-        refreshControls();
-        return;
-      }
-      try {
-        view.setPlanStats(currentApproval(), null);
-      } catch (error) {
-        view.setPlanStats(null, error);
-      }
-      refreshControls();
-    }
-
-    function currentApproval() {
-      if (!session.plan) throw new Error("먼저 전사문을 분석하십시오.");
-      return PAI.approveCandidates(session.plan, view.selectedCandidateIds());
-    }
-
-    async function applyRoughCut() {
-      await withBusy(async function () {
-        requireValidCertification();
-        const approval = currentApproval();
-        const selection = session.selection;
-        const base = String(selection.clipName || "AI_ROUGH_CUT").replace(/[\\/:*?"<>|]/g, "_");
-        const timestamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
-        const result = await PAI.createRoughCut(getPpro(), approval.keepRanges, `${base}_AI_ROUGH_CUT_${timestamp}`, {
-          expectedSource: selection,
-          expectedTranscriptJson: session.transcript?.source === "premiere" ? session.transcript.raw : null,
-        });
-        qualification.recordRoughCut(result);
-        view.setStatus(`새 시퀀스 “${result.sequenceName}”를 만들었습니다. (${result.segmentCount}구간)`, "success");
-      });
-    }
-
-    async function startQualification() {
-      await withBusy(async function () {
+    function startQualification() {
+      return withBusy(async function () {
         qualification.start();
         view.setStatus("현재 프로젝트와 원본으로 실제 Premiere 검증을 시작했습니다.", "success");
       });
     }
 
-    async function confirmQualificationPlayback() {
-      await withBusy(async function () {
+    function confirmQualificationPlayback() {
+      return withBusy(async function () {
         qualification.confirmPlayback();
         view.setStatus("A/V 싱크와 원본 불변 확인을 기록했습니다. 프로젝트를 저장하고 Premiere를 다시 여십시오.", "success");
       });
     }
 
-    async function confirmQualificationPersistence() {
-      await withBusy(async function () {
+    function confirmQualificationPersistence() {
+      return withBusy(async function () {
         await qualification.confirmPersistence();
         view.setStatus("저장·종료·재실행 후 러프컷 시퀀스 유지를 확인했습니다.", "success");
       });
@@ -287,9 +194,10 @@
       PAI.setBusy(session, true);
       refreshControls();
       try {
-        await task();
+        return await task();
       } catch (error) {
         view.setStatus(messageOf(error), "error");
+        return undefined;
       } finally {
         PAI.setBusy(session, false);
         refreshControls();
@@ -297,35 +205,16 @@
     }
 
     function refreshControls() {
-      let approvalValid = false;
-      if (session.plan) {
-        try {
-          currentApproval();
-          approvalValid = true;
-        } catch (_) {
-          approvalValid = false;
-        }
-      }
       const certified = Boolean(hostEnvironment && PAI.isCertificationValid(certification, hostEnvironment));
       view.updateControls(Object.assign({
         busy: session.busy,
-        hasSelection: Boolean(session.selection),
-        hasPlan: Boolean(session.plan),
         hasHost: Boolean(hostEnvironment),
-        canApply: PAI.canApply(session, certified) && approvalValid,
-      }, qualification.controlState()));
+      }, editor.controlState(certified), qualification.controlState()));
     }
 
     function getPpro() {
       if (!ppro) ppro = requireFn("premierepro");
       return ppro;
-    }
-
-    function sameSelection(left, right) {
-      return String(left?.projectId || "") === String(right?.projectId || "")
-        && String(left?.clipId || "") === String(right?.clipId || "")
-        && Math.abs(Number(left?.duration) - Number(right?.duration)) <= 0.002
-        && Math.abs(Number(left?.frameRate) - Number(right?.frameRate)) <= 0.0001;
     }
 
     return {
