@@ -1,0 +1,47 @@
+name: One-shot Core 0.4.0 finalizer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/finalize-core-0.4.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Require the awaited persistence probe
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const file = "plugin/index.js";
+          const before = "        qualification.confirmPersistence();";
+          const after = "        await qualification.confirmPersistence();";
+          let source = fs.readFileSync(file, "utf8");
+          if (source.includes(before)) source = source.replace(before, after);
+          if (!source.includes(after)) throw new Error("awaited persistence call is missing");
+          fs.writeFileSync(file, source);
+          NODE
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run verify
+      - name: Commit the verified finalizer result and remove this workflow
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/finalize-core-0.4.yml
+          git add plugin/index.js
+          git commit -m "fix: finalize Core 0.4.0 qualification flow"
+          git pull --rebase origin main
+          git push origin HEAD:main
