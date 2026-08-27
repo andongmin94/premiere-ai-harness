@@ -1,0 +1,119 @@
+name: One-shot Core 0.5.0 candidate audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/candidate-audit.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: core-0.5.0-candidate-audit
+  cancel-in-progress: false
+
+env:
+  CANDIDATE_SHA: 42ebf19bed3ef2ca01e3e7b9c7965cef671564f3
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 0
+          path: candidate
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: candidate/package-lock.json
+
+      - name: Install without lifecycle scripts
+        working-directory: candidate
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Run complete distribution verification
+        working-directory: candidate
+        run: npm run verify:distribution | tee ../VERIFY_DISTRIBUTION.log
+
+      - name: Run independent repository hygiene checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd candidate
+          test ! -e .update
+          test ! -e tmp
+          test ! -e .github/workflows/apply-distribution-update.yml
+          test ! -e .github/workflows/apply-fixed-core-0.5.0.yml
+          ! grep -RInE '(TODO|FIXME|HACK|XXX)' plugin scripts test --exclude-dir=node_modules
+          find plugin scripts test -type f \( -name '*.js' -o -name '*.mjs' \) -print0 \
+            | xargs -0 -n1 node --check
+          git diff --exit-code
+
+      - name: Create exact candidate source archive and audit metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd candidate
+          git archive --format=zip --output=../premiere-ai-harness-candidate-source.zip "${CANDIDATE_SHA}"
+          node <<'NODE'
+          const crypto = require('node:crypto');
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const candidate = process.env.CANDIDATE_SHA;
+          const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const ccx = fs.readdirSync('dist').find((name) => name.endsWith('.ccx'));
+          if (!ccx) throw new Error('CCX was not produced');
+          const bytes = fs.readFileSync(path.join('dist', ccx));
+          const metadata = {
+            formatVersion: 1,
+            status: 'PASS',
+            candidate,
+            version: packageJson.version,
+            ccx,
+            ccxBytes: bytes.length,
+            ccxSha256: crypto.createHash('sha256').update(bytes).digest('hex'),
+          };
+          fs.writeFileSync('../CANDIDATE_AUDIT.json', `${JSON.stringify(metadata, null, 2)}\n`);
+          NODE
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PremiereAIHarness-Core-0.5.0-Candidate-Audit
+          path: |
+            premiere-ai-harness-candidate-source.zip
+            CANDIDATE_AUDIT.json
+            VERIFY_DISTRIBUTION.log
+            candidate/dist/
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Record audit run on main
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          TRIGGER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" controller
+          cd controller
+          git checkout main
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "${TRIGGER_SHA}" || {
+            echo 'main moved during candidate audit; refusing stale receipt' >&2
+            exit 1
+          }
+          mkdir -p tmp
+          printf '{"runId":%s,"candidate":"%s","trigger":"%s","status":"PASS"}\n' \
+            "$RUN_ID" "$CANDIDATE_SHA" "$TRIGGER_SHA" > tmp/candidate-audit-run.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tmp/candidate-audit-run.json
+          git commit -m "ci: record Core 0.5.0 candidate audit [skip ci]"
+          git push origin HEAD:main
