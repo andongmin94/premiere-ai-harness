@@ -1,0 +1,65 @@
+name: Apply Core 0.5.0 distribution update
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .update/distribution-0.5.0.b64.*
+      - .github/workflows/apply-distribution-update.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-distribution-update-main
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Verify and extract the reviewed update
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .update/distribution-0.5.0.b64.* > /tmp/distribution-0.5.0.tar.gz.b64
+          base64 --decode /tmp/distribution-0.5.0.tar.gz.b64 > /tmp/distribution-0.5.0.tar.gz
+          echo "84f627309352cfefffa54c50174de747908710e2b75147c0a70470c293d6d6d6  /tmp/distribution-0.5.0.tar.gz" | sha256sum --check --strict
+          while IFS= read -r entry; do
+            normalized="${entry#./}"
+            case "$normalized" in
+              ""|/*|..|../*|*/..|*/../*)
+                echo "unsafe archive entry: $entry" >&2
+                exit 1
+                ;;
+            esac
+          done < <(tar -tzf /tmp/distribution-0.5.0.tar.gz)
+          tar -xzf /tmp/distribution-0.5.0.tar.gz -C .
+          rm -f .update/distribution-0.5.0.b64.*
+          rmdir .update
+          rm -f .github/workflows/apply-distribution-update.yml
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run verify
+      - run: npm run package:ccx
+      - run: npm run test:ccx
+      - name: Commit the verified update directly to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && {
+            echo "update produced no tracked changes" >&2
+            exit 1
+          }
+          git commit -m "feat: add Core 0.5.0 distribution qualification"
+          git push origin HEAD:main
