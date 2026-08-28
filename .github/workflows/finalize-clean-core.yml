@@ -151,7 +151,44 @@ jobs:
           find plugin scripts test -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check
           test "$(git write-tree)" = "${CLEAN_TREE_SHA}"
 
+      - name: Preserve exact verification evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="${RUNNER_TEMP}/pai-finalization-evidence"
+          rm -rf "$evidence"
+          mkdir -p "$evidence"
+          cp PremiereAIHarness-Core-0.5.1-source.zip "$evidence/"
+          cp VERIFY_DISTRIBUTION.log TREE_RECONSTRUCTION.json "$evidence/"
+          cp -a candidate/dist "$evidence/dist"
+          echo "EVIDENCE_DIR=$evidence" >> "$GITHUB_ENV"
+
       - name: Publish the verified tree as one fast-forward commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "${CONTROL_SHA}"
+
+          rm -rf candidate/node_modules candidate/dist candidate/.git
+          clean_source="${RUNNER_TEMP}/pai-clean-source"
+          rm -rf "$clean_source"
+          mv candidate "$clean_source"
+
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a "$clean_source"/. .
+          git add -A
+          test "$(git write-tree)" = "${CLEAN_TREE_SHA}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "release: finalize Core 0.5.1 distribution candidate"
+          test "$(git rev-parse HEAD^)" = "${CONTROL_SHA}"
+          test "$(git show -s --format=%T HEAD)" = "${CLEAN_TREE_SHA}"
+          git push origin HEAD:main
+          echo "FINAL_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Run and require permanent cross-platform Product CI
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -162,8 +199,8 @@ jobs:
 
           const repository = process.env.GITHUB_REPOSITORY;
           const token = process.env.GH_TOKEN;
-          const tree = process.env.CLEAN_TREE_SHA;
-          const parent = process.env.CONTROL_SHA;
+          const finalSha = process.env.FINAL_SHA;
+          const evidence = process.env.EVIDENCE_DIR;
           const headers = {
             Authorization: `Bearer ${token}`,
             Accept: 'application/vnd.github+json',
@@ -182,36 +219,47 @@ jobs:
             return response.json();
           }
 
-          async function main() {
-            const branch = await request('GET', '/branches/main');
-            if (branch.commit.sha !== parent) throw new Error(`main moved: ${branch.commit.sha} != ${parent}`);
-            const commit = await request('POST', '/git/commits', {
-              message: 'release: finalize Core 0.5.1 distribution candidate',
-              tree,
-              parents: [parent],
-            });
-            if (commit.tree.sha !== tree || commit.parents?.[0]?.sha !== parent) throw new Error('created commit does not bind the reviewed tree and parent');
-            await request('PATCH', '/git/refs/heads/main', { sha: commit.sha, force: false });
-            fs.writeFileSync('FINALIZE_RECEIPT.json', `${JSON.stringify({
-              formatVersion: 1,
-              status: 'PASS',
-              runId: Number(process.env.GITHUB_RUN_ID),
-              controlCommit: parent,
-              finalCommit: commit.sha,
-              treeSha: tree,
-            }, null, 2)}\n`);
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-            let lastError = null;
-            for (let attempt = 0; attempt < 10; attempt += 1) {
+          async function main() {
+            let dispatchError = null;
+            for (let attempt = 0; attempt < 15; attempt += 1) {
               try {
                 await request('POST', '/actions/workflows/product-ci.yml/dispatches', { ref: 'main' });
-                return;
+                dispatchError = null;
+                break;
               } catch (error) {
-                lastError = error;
-                await new Promise((resolve) => setTimeout(resolve, 2000));
+                dispatchError = error;
+                await sleep(2000);
               }
             }
-            throw lastError;
+            if (dispatchError) throw dispatchError;
+
+            let run = null;
+            for (let attempt = 0; attempt < 60 && !run; attempt += 1) {
+              const runs = await request('GET', '/actions/workflows/product-ci.yml/runs?branch=main&event=workflow_dispatch&per_page=20');
+              run = runs.workflow_runs.find((item) => item.head_sha === finalSha) || null;
+              if (!run) await sleep(5000);
+            }
+            if (!run) throw new Error(`Product CI run was not created for ${finalSha}`);
+
+            for (let attempt = 0; attempt < 120; attempt += 1) {
+              run = await request('GET', `/actions/runs/${run.id}`);
+              if (run.status === 'completed') break;
+              await sleep(5000);
+            }
+            if (run.status !== 'completed') throw new Error(`Product CI timed out: ${run.id}`);
+            if (run.conclusion !== 'success') throw new Error(`Product CI failed: ${run.id} ${run.conclusion}`);
+
+            fs.writeFileSync(`${evidence}/FINALIZE_RECEIPT.json`, `${JSON.stringify({
+              formatVersion: 1,
+              status: 'PASS',
+              finalCommit: finalSha,
+              treeSha: process.env.CLEAN_TREE_SHA,
+              finalizerRunId: Number(process.env.GITHUB_RUN_ID),
+              productCiRunId: Number(run.id),
+              productCiConclusion: run.conclusion,
+            }, null, 2)}\n`);
           }
 
           main().catch((error) => {
@@ -220,42 +268,10 @@ jobs:
           });
           NODE
 
-      - name: Record a failed finalization while main still points to this run
-        if: failure()
-        shell: bash
-        env:
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          git fetch origin main
-          if [ "$(git rev-parse origin/main)" != "${CONTROL_SHA:-}" ]; then
-            echo "main no longer points to this run; no failure receipt written"
-            exit 0
-          fi
-          git reset --hard "${CONTROL_SHA}"
-          node <<'NODE'
-          const fs = require('node:fs');
-          fs.writeFileSync('tmp/finalize-run.json', `${JSON.stringify({
-            formatVersion: 1,
-            status: 'FAIL',
-            runId: Number(process.env.RUN_ID),
-            controlCommit: process.env.CONTROL_SHA,
-            cleanTreeSha: process.env.CLEAN_TREE_SHA,
-          }, null, 2)}\n`);
-          NODE
-          git add tmp/finalize-run.json
-          git commit -m "ci: record failed Core 0.5.1 finalization [skip ci]"
-          git push origin HEAD:main
-
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: PremiereAIHarness-Core-0.5.1-Finalization
-          path: |
-            PremiereAIHarness-Core-0.5.1-source.zip
-            VERIFY_DISTRIBUTION.log
-            TREE_RECONSTRUCTION.json
-            FINALIZE_RECEIPT.json
-            candidate/dist/
+          path: ${{ env.EVIDENCE_DIR }}/
           if-no-files-found: warn
           retention-days: 30
