@@ -25,6 +25,31 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Record audit start
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          TRIGGER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p tmp
+          node <<'NODE'
+          const fs = require('node:fs');
+          fs.writeFileSync('tmp/payload-audit-run.json', `${JSON.stringify({
+            formatVersion: 1,
+            status: 'RUNNING',
+            runId: Number(process.env.RUN_ID),
+            triggerCommit: process.env.TRIGGER_SHA,
+            payloadSha256: process.env.PAYLOAD_SHA256,
+          }, null, 2)}\n`);
+          NODE
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tmp/payload-audit-run.json
+          git commit -m "ci: start Core 0.5.0 payload audit [skip ci]"
+          git push origin HEAD:main
+          echo "CONTROL_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Verify and extract the exact staged payload
         shell: bash
         run: |
@@ -74,7 +99,9 @@ jobs:
           ! grep -RInE '(TODO|FIXME|HACK|XXX)' plugin scripts test --exclude-dir=node_modules
           find plugin scripts test -type f \( -name '*.js' -o -name '*.mjs' \) -print0 \
             | xargs -0 -n1 node --check
-          test "$(node -p "require('./package.json').version")" = "$(node -p "require('./plugin/manifest.json').version")"
+          package_version="$(node -p "require('./package.json').version")"
+          manifest_version="$(node -p "require('./plugin/manifest.json').version")"
+          test "$package_version" = "$manifest_version"
 
       - name: Create audit metadata
         shell: bash
@@ -116,36 +143,38 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Record successful payload audit on main
+      - name: Record final audit result
+        if: ${{ always() }}
         shell: bash
         env:
+          AUDIT_RESULT: ${{ job.status }}
           RUN_ID: ${{ github.run_id }}
           TRIGGER_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           git fetch origin main
-          test "$(git rev-parse origin/main)" = "${TRIGGER_SHA}" || {
+          test "$(git rev-parse origin/main)" = "${CONTROL_SHA}" || {
             echo 'main moved during payload audit; refusing stale receipt' >&2
             exit 1
           }
-          mkdir -p tmp
+          git reset --hard "${CONTROL_SHA}"
           node <<'NODE'
           const fs = require('node:fs');
-          const audit = JSON.parse(fs.readFileSync('PAYLOAD_AUDIT.json', 'utf8'));
+          let audit = {};
+          if (fs.existsSync('PAYLOAD_AUDIT.json')) audit = JSON.parse(fs.readFileSync('PAYLOAD_AUDIT.json', 'utf8'));
+          const passed = process.env.AUDIT_RESULT === 'success';
           const receipt = {
             formatVersion: 1,
-            status: 'PASS',
+            status: passed ? 'PASS' : 'FAIL',
             runId: Number(process.env.RUN_ID),
             triggerCommit: process.env.TRIGGER_SHA,
-            payloadSha256: audit.payloadSha256,
-            version: audit.version,
-            sourceTreeSha256: audit.sourceTreeSha256,
-            ccxSha256: audit.ccxSha256,
+            payloadSha256: process.env.PAYLOAD_SHA256,
+            version: audit.version || null,
+            sourceTreeSha256: audit.sourceTreeSha256 || null,
+            ccxSha256: audit.ccxSha256 || null,
           };
           fs.writeFileSync('tmp/payload-audit-run.json', `${JSON.stringify(receipt, null, 2)}\n`);
           NODE
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add tmp/payload-audit-run.json
           git commit -m "ci: record Core 0.5.0 payload audit [skip ci]"
           git push origin HEAD:main
