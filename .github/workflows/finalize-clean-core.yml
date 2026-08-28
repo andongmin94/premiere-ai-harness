@@ -1,0 +1,200 @@
+name: Finalize clean Core 0.5.1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/finalize-clean-core.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: finalize-clean-core-main
+  cancel-in-progress: false
+
+env:
+  BASE_CANDIDATE: 42ebf19bed3ef2ca01e3e7b9c7965cef671564f3
+  FINAL_VERSION: 0.5.1
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      trigger_sha: ${{ steps.meta.outputs.trigger_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: meta
+        shell: bash
+        run: echo "trigger_sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - name: Reconstruct reviewed source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DESTINATION: candidate
+          PRODUCT_CI_TEMPLATE: .finalize/product-ci.yml
+        run: python3 .finalize/reconstruct.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: candidate/package-lock.json
+      - name: Verify reconstructed distribution
+        working-directory: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run verify:distribution
+          ! grep -RInE '(TODO|FIXME|HACK|XXX)' plugin scripts test --exclude-dir=node_modules
+          find plugin scripts test -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check
+          test ! -e .update
+          test ! -e tmp
+          test ! -e reports
+          test ! -e docs/STATUS.md
+          test ! -e .finalize
+          test "$(find .github/workflows -maxdepth 1 -type f | wc -l)" -eq 1
+          rm -rf node_modules dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clean-core-source
+          path: candidate/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+  verify:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: clean-core-source
+          path: candidate
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: candidate/package-lock.json
+      - working-directory: candidate
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - working-directory: candidate
+        run: npm run verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clean-core-${{ runner.os }}
+          path: candidate/dist/*-uxp-source.manifest.json
+          if-no-files-found: error
+          retention-days: 1
+
+  compare:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: clean-core-*
+          path: manifests
+      - shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          function walk(directory) {
+            return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+              const full = path.join(directory, entry.name);
+              if (entry.isDirectory()) return walk(full);
+              return entry.name.endsWith('.manifest.json') ? [full] : [];
+            });
+          }
+          const files = walk('manifests');
+          if (files.length !== 2) throw new Error(`expected two manifests, found ${files.length}`);
+          const values = files.map((file) => JSON.parse(fs.readFileSync(file, 'utf8')));
+          const compact = (value) => JSON.stringify(value.entries.map(({ path, bytes, sha256 }) => ({ path, bytes, sha256 })));
+          if (values[0].version !== values[1].version || values[0].treeSha256 !== values[1].treeSha256 || compact(values[0]) !== compact(values[1])) {
+            throw new Error('cross-platform source packages differ');
+          }
+          NODE
+
+  distribution:
+    needs: compare
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: clean-core-source
+          path: candidate
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: candidate/package-lock.json
+      - working-directory: candidate
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - working-directory: candidate
+        run: npm run verify:distribution
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PremiereAIHarness-Core-0.5.1-Distribution
+          path: candidate/dist/
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    needs: [prepare, verify, compare, distribution]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: clean-core-source
+          path: clean-source
+      - name: Publish verified source atomically
+        shell: bash
+        env:
+          TRIGGER_SHA: ${{ needs.prepare.outputs.trigger_sha }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "${TRIGGER_SHA}" || {
+            echo "main moved during finalization; refusing stale publish" >&2
+            exit 1
+          }
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a clean-source/. .
+          rm -rf clean-source
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && {
+            echo "clean source produced no changes" >&2
+            exit 1
+          }
+          git commit -m "refactor: finalize clean Core 0.5.1 qualification candidate"
+          git push origin HEAD:main
+      - name: Start permanent Product CI
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl --fail-with-body -L -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/product-ci.yml/dispatches" \
+            -d '{"ref":"main"}'
