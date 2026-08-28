@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: finalize-exact-core-0.5.1-main
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   CLEAN_TREE_SHA: 54b72159e1eb2762fb3d064b8c31900f8fa8a634
@@ -27,11 +27,34 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Record the exact workflow run before verification
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          TRIGGER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p tmp
+          node <<'NODE'
+          const fs = require('node:fs');
+          fs.writeFileSync('tmp/finalize-run.json', `${JSON.stringify({
+            formatVersion: 1,
+            status: 'RUNNING',
+            runId: Number(process.env.RUN_ID),
+            triggerCommit: process.env.TRIGGER_SHA,
+            cleanTreeSha: process.env.CLEAN_TREE_SHA,
+          }, null, 2)}\n`);
+          NODE
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tmp/finalize-run.json
+          git commit -m "ci: start exact Core 0.5.1 finalization [skip ci]"
+          git push origin HEAD:main
+          echo "CONTROL_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: package-lock.json
 
       - name: Reconstruct the exact reviewed Git tree
         shell: bash
@@ -132,7 +155,6 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TRIGGER_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           node <<'NODE'
@@ -141,7 +163,7 @@ jobs:
           const repository = process.env.GITHUB_REPOSITORY;
           const token = process.env.GH_TOKEN;
           const tree = process.env.CLEAN_TREE_SHA;
-          const parent = process.env.TRIGGER_SHA;
+          const parent = process.env.CONTROL_SHA;
           const headers = {
             Authorization: `Bearer ${token}`,
             Accept: 'application/vnd.github+json',
@@ -173,7 +195,8 @@ jobs:
             fs.writeFileSync('FINALIZE_RECEIPT.json', `${JSON.stringify({
               formatVersion: 1,
               status: 'PASS',
-              triggerCommit: parent,
+              runId: Number(process.env.GITHUB_RUN_ID),
+              controlCommit: parent,
               finalCommit: commit.sha,
               treeSha: tree,
             }, null, 2)}\n`);
@@ -196,6 +219,33 @@ jobs:
             process.exit(1);
           });
           NODE
+
+      - name: Record a failed finalization while main still points to this run
+        if: failure()
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          if [ "$(git rev-parse origin/main)" != "${CONTROL_SHA:-}" ]; then
+            echo "main no longer points to this run; no failure receipt written"
+            exit 0
+          fi
+          git reset --hard "${CONTROL_SHA}"
+          node <<'NODE'
+          const fs = require('node:fs');
+          fs.writeFileSync('tmp/finalize-run.json', `${JSON.stringify({
+            formatVersion: 1,
+            status: 'FAIL',
+            runId: Number(process.env.RUN_ID),
+            controlCommit: process.env.CONTROL_SHA,
+            cleanTreeSha: process.env.CLEAN_TREE_SHA,
+          }, null, 2)}\n`);
+          NODE
+          git add tmp/finalize-run.json
+          git commit -m "ci: record failed Core 0.5.1 finalization [skip ci]"
+          git push origin HEAD:main
 
       - uses: actions/upload-artifact@v4
         if: always()
