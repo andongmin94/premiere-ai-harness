@@ -1,8 +1,6 @@
 name: Product CI
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -19,21 +17,45 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 20
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
-      - run: npm ci --ignore-scripts --no-audit --no-fund
-      - run: npm run verify
-      - uses: actions/upload-artifact@v4
+
+      - name: Install exact dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Verify source package
+        run: npm run verify
+
+      - name: Build and verify deterministic CCX
+        run: |
+          npm run package:ccx
+          npm run test:ccx
+
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
         with:
-          name: source-package-${{ runner.os }}
+          name: PremiereAIHarness-Source-Snapshot-${{ runner.os }}
           path: |
             dist/*-uxp-source/
             dist/*-uxp-source.manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload distribution receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: PremiereAIHarness-Core-Distribution-Receipt-${{ runner.os }}
+          path: |
+            dist/*.ccx
+            dist/*.ccx.sha256
+            dist/*.ccx.manifest.json
           if-no-files-found: error
           retention-days: 30
 
@@ -41,58 +63,86 @@ jobs:
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 10
+
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: source-package-*
+          pattern: PremiereAIHarness-*
           path: artifacts
-      - name: Compare Linux and Windows packages byte for byte
+
+      - name: Compare Linux and Windows outputs byte for byte
         shell: bash
         run: |
           node <<'NODE'
           const fs = require('node:fs');
           const path = require('node:path');
 
-          function findManifests(directory) {
-            const output = [];
-            for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+          function walk(directory) {
+            return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
               const full = path.join(directory, entry.name);
-              if (entry.isDirectory()) output.push(...findManifests(full));
-              else if (entry.name.endsWith('-uxp-source.manifest.json')) output.push(full);
-            }
-            return output;
+              return entry.isDirectory() ? walk(full) : [full];
+            });
           }
 
-          const files = findManifests('artifacts').sort();
-          if (files.length !== 2) throw new Error(`expected two source manifests, found ${files.length}`);
-          const manifests = files.map((file) => JSON.parse(fs.readFileSync(file, 'utf8')));
-          const compact = (manifest) => JSON.stringify({
-            version: manifest.version,
-            packageKind: manifest.packageKind,
-            installable: manifest.installable,
-            treeSha256: manifest.treeSha256,
-            entries: manifest.entries.map(({ path, bytes, sha256 }) => ({ path, bytes, sha256 })),
-          });
-          if (compact(manifests[0]) !== compact(manifests[1])) {
+          function exactly(files, predicate, expected, label) {
+            const matches = files.filter(predicate).sort();
+            if (matches.length !== expected) {
+              throw new Error(`expected ${expected} ${label}, found ${matches.length}`);
+            }
+            return matches;
+          }
+
+          const files = walk('artifacts');
+          const sourceManifests = exactly(
+            files,
+            (file) => file.endsWith('-uxp-source.manifest.json'),
+            2,
+            'source manifests',
+          );
+          const ccxManifests = exactly(
+            files,
+            (file) => file.endsWith('.ccx.manifest.json'),
+            2,
+            'CCX manifests',
+          );
+          const ccxArchives = exactly(
+            files,
+            (file) => file.endsWith('.ccx'),
+            2,
+            'CCX archives',
+          );
+
+          const compactSource = (file) => {
+            const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+            return JSON.stringify({
+              version: value.version,
+              packageKind: value.packageKind,
+              installable: value.installable,
+              treeSha256: value.treeSha256,
+              entries: value.entries.map(({ path, bytes, sha256 }) => ({ path, bytes, sha256 })),
+            });
+          };
+
+          const compactCcx = (file) => {
+            const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+            return JSON.stringify({
+              version: value.version,
+              packageKind: value.packageKind,
+              sourceTreeSha256: value.sourceTreeSha256,
+              bytes: value.bytes,
+              sha256: value.sha256,
+              archive: value.archive,
+              entries: value.entries,
+            });
+          };
+
+          if (compactSource(sourceManifests[0]) !== compactSource(sourceManifests[1])) {
             throw new Error('Linux and Windows source packages differ');
           }
+          if (compactCcx(ccxManifests[0]) !== compactCcx(ccxManifests[1])) {
+            throw new Error('Linux and Windows CCX metadata differs');
+          }
+          if (!fs.readFileSync(ccxArchives[0]).equals(fs.readFileSync(ccxArchives[1]))) {
+            throw new Error('Linux and Windows CCX archives are not byte-identical');
+          }
           NODE
-
-  distribution:
-    needs: compare
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-      - run: npm ci --ignore-scripts --no-audit --no-fund
-      - run: npm run verify:distribution
-      - uses: actions/upload-artifact@v4
-        with:
-          name: PremiereAIHarness-Core-Distribution
-          path: dist/
-          if-no-files-found: error
-          retention-days: 30
