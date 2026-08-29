@@ -1,4 +1,4 @@
-name: Finalize exact clean Core 0.5.1
+name: Publish audited Core 0.5.1 source
 
 on:
   push:
@@ -9,72 +9,45 @@ on:
 
 permissions:
   contents: write
-  actions: write
 
 concurrency:
-  group: finalize-exact-core-0.5.1-main
-  cancel-in-progress: true
+  group: publish-audited-core-0.5.1-main
+  cancel-in-progress: false
 
 env:
   CLEAN_TREE_SHA: 54b72159e1eb2762fb3d064b8c31900f8fa8a634
 
 jobs:
-  finalize:
+  publish:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 1
-
-      - name: Record the exact workflow run before verification
-        shell: bash
-        env:
-          RUN_ID: ${{ github.run_id }}
-          TRIGGER_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          mkdir -p tmp
-          node <<'NODE'
-          const fs = require('node:fs');
-          fs.writeFileSync('tmp/finalize-run.json', `${JSON.stringify({
-            formatVersion: 1,
-            status: 'RUNNING',
-            runId: Number(process.env.RUN_ID),
-            triggerCommit: process.env.TRIGGER_SHA,
-            cleanTreeSha: process.env.CLEAN_TREE_SHA,
-          }, null, 2)}\n`);
-          NODE
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tmp/finalize-run.json
-          git commit -m "ci: start exact Core 0.5.1 finalization [skip ci]"
-          git push origin HEAD:main
-          echo "CONTROL_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Reconstruct the exact reviewed Git tree
+      - name: Reconstruct the exact reviewed tree
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          rm -rf candidate
-          mkdir candidate
+          rm -rf /tmp/pai-clean
+          mkdir -p /tmp/pai-clean
           node <<'NODE'
           const crypto = require('node:crypto');
           const fs = require('node:fs');
           const path = require('node:path');
 
+          const destination = '/tmp/pai-clean';
           const repository = process.env.GITHUB_REPOSITORY;
           const treeSha = process.env.CLEAN_TREE_SHA;
-          const token = process.env.GH_TOKEN;
-          const destination = path.resolve('candidate');
           const headers = {
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${process.env.GH_TOKEN}`,
             Accept: 'application/vnd.github+json',
             'X-GitHub-Api-Version': '2022-11-28',
           };
@@ -85,45 +58,37 @@ jobs:
             return response.json();
           }
 
-          function safePath(relative) {
+          function outputPath(relative) {
             if (!relative || relative.startsWith('/') || relative.includes('\\')
-              || relative.split('/').some((part) => part === '' || part === '.' || part === '..')) {
+              || relative.split('/').some((part) => !part || part === '.' || part === '..')) {
               throw new Error(`unsafe tree path: ${relative}`);
             }
-            const resolved = path.resolve(destination, relative);
-            if (!resolved.startsWith(`${destination}${path.sep}`)) throw new Error(`tree path escapes destination: ${relative}`);
-            return resolved;
+            const output = path.resolve(destination, relative);
+            if (!output.startsWith(`${destination}${path.sep}`)) throw new Error(`tree path escapes destination: ${relative}`);
+            return output;
           }
 
           async function main() {
             const tree = await getJson(`/git/trees/${treeSha}?recursive=1`);
-            if (tree.sha !== treeSha || tree.truncated) throw new Error('clean tree response is invalid or truncated');
+            if (tree.sha !== treeSha || tree.truncated) throw new Error('reviewed tree response is invalid or truncated');
             const blobs = tree.tree.filter((entry) => entry.type === 'blob').sort((a, b) => a.path.localeCompare(b.path, 'en'));
             if (!blobs.length || tree.tree.some((entry) => !['blob', 'tree'].includes(entry.type))) {
-              throw new Error('clean tree contains an unsupported Git entry');
+              throw new Error('reviewed tree contains an unsupported Git entry');
             }
-            const seen = new Set();
             for (const entry of blobs) {
-              if (seen.has(entry.path)) throw new Error(`duplicate tree path: ${entry.path}`);
-              seen.add(entry.path);
               if (!['100644', '100755'].includes(entry.mode)) throw new Error(`unsupported mode ${entry.mode}: ${entry.path}`);
               const blob = await getJson(`/git/blobs/${entry.sha}`);
-              if (blob.sha !== entry.sha || blob.encoding !== 'base64') throw new Error(`invalid blob response: ${entry.path}`);
-              const bytes = Buffer.from(String(blob.content).replace(/\s+/g, ''), 'base64');
-              const gitSha = crypto.createHash('sha1').update(Buffer.concat([
+              const bytes = Buffer.from(String(blob.content || '').replace(/\s+/g, ''), 'base64');
+              const computed = crypto.createHash('sha1').update(Buffer.concat([
                 Buffer.from(`blob ${bytes.length}\0`), bytes,
               ])).digest('hex');
-              if (gitSha !== entry.sha) throw new Error(`blob SHA mismatch: ${entry.path}`);
-              const output = safePath(entry.path);
+              if (blob.sha !== entry.sha || blob.encoding !== 'base64' || computed !== entry.sha) {
+                throw new Error(`blob verification failed: ${entry.path}`);
+              }
+              const output = outputPath(entry.path);
               fs.mkdirSync(path.dirname(output), { recursive: true });
               fs.writeFileSync(output, bytes, { mode: entry.mode === '100755' ? 0o755 : 0o644 });
             }
-            fs.writeFileSync('TREE_RECONSTRUCTION.json', `${JSON.stringify({
-              formatVersion: 1,
-              status: 'PASS',
-              treeSha,
-              files: blobs.length,
-            }, null, 2)}\n`);
           }
 
           main().catch((error) => {
@@ -132,146 +97,44 @@ jobs:
           });
           NODE
 
-          cd candidate
-          git init -q
-          git config core.autocrlf false
-          git config core.filemode true
-          git add -A
-          test "$(git write-tree)" = "${CLEAN_TREE_SHA}"
-          git archive --format=zip --output=../PremiereAIHarness-Core-0.5.1-source.zip "${CLEAN_TREE_SHA}"
+          git -C /tmp/pai-clean init -q
+          git -C /tmp/pai-clean config core.autocrlf false
+          git -C /tmp/pai-clean config core.filemode true
+          git -C /tmp/pai-clean add -A
+          test "$(git -C /tmp/pai-clean write-tree)" = "${CLEAN_TREE_SHA}"
 
-      - name: Run the complete distribution gate
-        working-directory: candidate
+      - name: Run the complete source and distribution gate
+        working-directory: /tmp/pai-clean
         shell: bash
         run: |
           set -euo pipefail
           npm ci --ignore-scripts --no-audit --no-fund
-          npm run verify:distribution | tee ../VERIFY_DISTRIBUTION.log
+          npm run verify:distribution
           ! grep -RInE '(TODO|FIXME|HACK|XXX)' plugin scripts test --exclude-dir=node_modules
           find plugin scripts test -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check
           test "$(git write-tree)" = "${CLEAN_TREE_SHA}"
 
-      - name: Preserve exact verification evidence
+      - name: Replace product files without modifying workflow files
         shell: bash
         run: |
           set -euo pipefail
-          evidence="${RUNNER_TEMP}/pai-finalization-evidence"
-          rm -rf "$evidence"
-          mkdir -p "$evidence"
-          cp PremiereAIHarness-Core-0.5.1-source.zip "$evidence/"
-          cp VERIFY_DISTRIBUTION.log TREE_RECONSTRUCTION.json "$evidence/"
-          cp -a candidate/dist "$evidence/dist"
-          echo "EVIDENCE_DIR=$evidence" >> "$GITHUB_ENV"
-
-      - name: Publish the verified tree as one fast-forward commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin main
-          test "$(git rev-parse origin/main)" = "${CONTROL_SHA}"
-
-          rm -rf candidate/node_modules candidate/dist candidate/.git
-          clean_source="${RUNNER_TEMP}/pai-clean-source"
-          rm -rf "$clean_source"
-          mv candidate "$clean_source"
-
-          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-          cp -a "$clean_source"/. .
+          find . -mindepth 1 -maxdepth 1 ! -name .git ! -name .github -exec rm -rf {} +
+          for entry in /tmp/pai-clean/* /tmp/pai-clean/.[!.]* /tmp/pai-clean/..?*; do
+            [ -e "$entry" ] || continue
+            [ "$(basename "$entry")" = ".git" ] && continue
+            [ "$(basename "$entry")" = ".github" ] && continue
+            cp -a "$entry" .
+          done
           git add -A
-          test "$(git write-tree)" = "${CLEAN_TREE_SHA}"
-
+          if git diff --cached --name-only | grep -q '^\.github/workflows/'; then
+            echo 'workflow files must be cleaned separately through the authenticated contents API' >&2
+            exit 1
+          fi
+          git diff --cached --quiet && {
+            echo 'audited source produced no product-file changes' >&2
+            exit 1
+          }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "release: finalize Core 0.5.1 distribution candidate"
-          test "$(git rev-parse HEAD^)" = "${CONTROL_SHA}"
-          test "$(git show -s --format=%T HEAD)" = "${CLEAN_TREE_SHA}"
+          git commit -m "refactor: replace staging debris with audited Core 0.5.1 source"
           git push origin HEAD:main
-          echo "FINAL_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-
-      - name: Run and require permanent cross-platform Product CI
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          node <<'NODE'
-          const fs = require('node:fs');
-
-          const repository = process.env.GITHUB_REPOSITORY;
-          const token = process.env.GH_TOKEN;
-          const finalSha = process.env.FINAL_SHA;
-          const evidence = process.env.EVIDENCE_DIR;
-          const headers = {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/vnd.github+json',
-            'Content-Type': 'application/json',
-            'X-GitHub-Api-Version': '2022-11-28',
-          };
-
-          async function request(method, endpoint, body) {
-            const response = await fetch(`https://api.github.com/repos/${repository}${endpoint}`, {
-              method,
-              headers,
-              body: body == null ? undefined : JSON.stringify(body),
-            });
-            if (!response.ok) throw new Error(`${method} ${endpoint}: ${response.status} ${await response.text()}`);
-            if (response.status === 204) return null;
-            return response.json();
-          }
-
-          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-          async function main() {
-            let dispatchError = null;
-            for (let attempt = 0; attempt < 15; attempt += 1) {
-              try {
-                await request('POST', '/actions/workflows/product-ci.yml/dispatches', { ref: 'main' });
-                dispatchError = null;
-                break;
-              } catch (error) {
-                dispatchError = error;
-                await sleep(2000);
-              }
-            }
-            if (dispatchError) throw dispatchError;
-
-            let run = null;
-            for (let attempt = 0; attempt < 60 && !run; attempt += 1) {
-              const runs = await request('GET', '/actions/workflows/product-ci.yml/runs?branch=main&event=workflow_dispatch&per_page=20');
-              run = runs.workflow_runs.find((item) => item.head_sha === finalSha) || null;
-              if (!run) await sleep(5000);
-            }
-            if (!run) throw new Error(`Product CI run was not created for ${finalSha}`);
-
-            for (let attempt = 0; attempt < 120; attempt += 1) {
-              run = await request('GET', `/actions/runs/${run.id}`);
-              if (run.status === 'completed') break;
-              await sleep(5000);
-            }
-            if (run.status !== 'completed') throw new Error(`Product CI timed out: ${run.id}`);
-            if (run.conclusion !== 'success') throw new Error(`Product CI failed: ${run.id} ${run.conclusion}`);
-
-            fs.writeFileSync(`${evidence}/FINALIZE_RECEIPT.json`, `${JSON.stringify({
-              formatVersion: 1,
-              status: 'PASS',
-              finalCommit: finalSha,
-              treeSha: process.env.CLEAN_TREE_SHA,
-              finalizerRunId: Number(process.env.GITHUB_RUN_ID),
-              productCiRunId: Number(run.id),
-              productCiConclusion: run.conclusion,
-            }, null, 2)}\n`);
-          }
-
-          main().catch((error) => {
-            console.error(error.stack || error);
-            process.exit(1);
-          });
-          NODE
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: PremiereAIHarness-Core-0.5.1-Finalization
-          path: ${{ env.EVIDENCE_DIR }}/
-          if-no-files-found: warn
-          retention-days: 30
