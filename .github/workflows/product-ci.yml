@@ -1,13 +1,98 @@
 name: Product CI
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: product-ci-main
+  cancel-in-progress: true
+
 jobs:
-  paused:
-    runs-on: ubuntu-latest
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
-      - run: echo "Product CI is paused only for the atomic Core 0.5.0 update commit."
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-package-${{ runner.os }}
+          path: |
+            dist/*-uxp-source/
+            dist/*-uxp-source.manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: source-package-*
+          path: artifacts
+      - name: Compare Linux and Windows packages byte for byte
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          function findManifests(directory) {
+            const output = [];
+            for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+              const full = path.join(directory, entry.name);
+              if (entry.isDirectory()) output.push(...findManifests(full));
+              else if (entry.name.endsWith('-uxp-source.manifest.json')) output.push(full);
+            }
+            return output;
+          }
+
+          const files = findManifests('artifacts').sort();
+          if (files.length !== 2) throw new Error(`expected two source manifests, found ${files.length}`);
+          const manifests = files.map((file) => JSON.parse(fs.readFileSync(file, 'utf8')));
+          const compact = (manifest) => JSON.stringify({
+            version: manifest.version,
+            packageKind: manifest.packageKind,
+            installable: manifest.installable,
+            treeSha256: manifest.treeSha256,
+            entries: manifest.entries.map(({ path, bytes, sha256 }) => ({ path, bytes, sha256 })),
+          });
+          if (compact(manifests[0]) !== compact(manifests[1])) {
+            throw new Error('Linux and Windows source packages differ');
+          }
+          NODE
+
+  distribution:
+    needs: compare
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run verify:distribution
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PremiereAIHarness-Core-Distribution
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
