@@ -1,0 +1,262 @@
+name: Simplify deterministic CCX implementation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/ccx-simplification.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: simplify-ccx-main
+  cancel-in-progress: false
+
+jobs:
+  simplify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Replace the system ZIP command and custom parser
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node -p "require('./package.json').version")" = "0.5.1"
+          test -f eslint.config.mjs
+          test -f test/adobe-api-contract.ts
+
+          node <<'NODE'
+          const fs = require('node:fs');
+          const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          packageJson.devDependencies.fflate = '0.8.2';
+          packageJson.devDependencies = Object.fromEntries(Object.entries(packageJson.devDependencies).sort());
+          fs.writeFileSync('package.json', `${JSON.stringify(packageJson, null, 2)}\n`);
+          NODE
+
+          cat > scripts/ccx-archive.mjs <<'EOF'
+          import crypto from "node:crypto";
+          import fs from "node:fs";
+          import path from "node:path";
+          import { unzipSync, zipSync } from "fflate";
+
+          const FIXED_TIME = new Date("1980-01-01T00:00:00.000Z");
+
+          export function createCcxArchive(sourceDirectory) {
+            const entries = {};
+            for (const relative of listRelativeFiles(sourceDirectory)) {
+              entries[relative] = [
+                new Uint8Array(fs.readFileSync(path.join(sourceDirectory, relative))),
+                { level: 9, mtime: FIXED_TIME },
+              ];
+            }
+            return Buffer.from(zipSync(entries, { level: 9 }));
+          }
+
+          export function inspectCcx(file) {
+            const bytes = fs.readFileSync(file);
+            const decoded = unzipSync(new Uint8Array(bytes));
+            const names = Object.keys(decoded).sort((left, right) => left.localeCompare(right, "en"));
+            if (names.length === 0) throw new Error("CCX archive is empty");
+            const entries = names.map((name) => {
+              validateArchivePath(name);
+              const data = Buffer.from(decoded[name]);
+              return Object.freeze({ path: name, bytes: data.length, sha256: sha256(data), data });
+            });
+            return Object.freeze({ bytes: bytes.length, sha256: sha256(bytes), entries: Object.freeze(entries) });
+          }
+
+          export function verifyCcxAgainstDirectory(file, sourceDirectory) {
+            const inspected = inspectCcx(file);
+            const expected = listRelativeFiles(sourceDirectory);
+            const actual = inspected.entries.map((entry) => entry.path);
+            if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+              throw new Error("CCX entries differ from the source package");
+            }
+            for (const entry of inspected.entries) {
+              const source = fs.readFileSync(path.join(sourceDirectory, entry.path));
+              if (!source.equals(entry.data)) throw new Error(`CCX entry differs from source: ${entry.path}`);
+            }
+            return inspected;
+          }
+
+          function listRelativeFiles(directory) {
+            const output = [];
+            visit(directory, "");
+            return output.sort((left, right) => left.localeCompare(right, "en"));
+
+            function visit(current, relative) {
+              for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+                const next = relative ? `${relative}/${entry.name}` : entry.name;
+                const full = path.join(current, entry.name);
+                if (entry.isDirectory()) visit(full, next);
+                else if (entry.isFile()) output.push(next);
+                else throw new Error(`unsupported source entry: ${full}`);
+              }
+            }
+          }
+
+          function validateArchivePath(value) {
+            if (!value || value.startsWith("/") || value.includes("\\")
+              || value.split("/").some((part) => !part || part === "." || part === "..")) {
+              throw new Error(`unsafe CCX path: ${value}`);
+            }
+          }
+
+          function sha256(value) {
+            return crypto.createHash("sha256").update(value).digest("hex");
+          }
+          EOF
+
+          cat > scripts/build-ccx.mjs <<'EOF'
+          import fs from "node:fs";
+          import path from "node:path";
+          import { fileURLToPath, pathToFileURL } from "node:url";
+          import { createCcxArchive, verifyCcxAgainstDirectory } from "./ccx-archive.mjs";
+          import { packagePlugin } from "./package-plugin.mjs";
+
+          const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+          const FIXED_TIME = "1980-01-01T00:00:00.000Z";
+
+          export function buildCcx(options = {}) {
+            const source = packagePlugin(options.sourceDirectory);
+            const outputFile = path.resolve(options.outputFile || defaultOutputFile(source.version));
+            fs.mkdirSync(path.dirname(outputFile), { recursive: true });
+            fs.writeFileSync(outputFile, createCcxArchive(source.outputDirectory));
+
+            const inspected = verifyCcxAgainstDirectory(outputFile, source.outputDirectory);
+            const sidecar = {
+              formatVersion: 1,
+              packageKind: "uxp-ccx-install-candidate",
+              pluginId: readJson(path.join(source.outputDirectory, "manifest.json")).id,
+              version: source.version,
+              host: "premierepro",
+              sourceCommit: String(options.sourceCommit || process.env.GITHUB_SHA || "unverified-local"),
+              sourceTreeSha256: source.treeSha256,
+              file: path.basename(outputFile),
+              bytes: inspected.bytes,
+              sha256: inspected.sha256,
+              installCandidate: true,
+              installVerified: false,
+              distributionReady: false,
+              archive: {
+                format: "zip",
+                implementation: "fflate@0.8.2",
+                fixedTimestamp: FIXED_TIME,
+              },
+              entries: inspected.entries.map(({ path: entryPath, bytes, sha256 }) => ({
+                path: entryPath,
+                bytes,
+                sha256,
+              })),
+            };
+
+            fs.writeFileSync(`${outputFile}.sha256`, `${inspected.sha256}  ${path.basename(outputFile)}\n`);
+            fs.writeFileSync(`${outputFile}.manifest.json`, `${JSON.stringify(sidecar, null, 2)}\n`);
+            return Object.freeze({ outputFile, source, ...sidecar });
+          }
+
+          function defaultOutputFile(version) {
+            return path.join(root, "dist", `PremiereAIHarness-Core-${version}-premierepro.ccx`);
+          }
+
+          function readJson(file) {
+            return JSON.parse(fs.readFileSync(file, "utf8"));
+          }
+
+          if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+            const artifact = buildCcx();
+            console.log(`CCX CANDIDATE PASS: ${path.basename(artifact.outputFile)} ${artifact.bytes} bytes sha256:${artifact.sha256}`);
+          }
+          EOF
+
+          cat > scripts/test-ccx.mjs <<'EOF'
+          import fs from "node:fs";
+          import os from "node:os";
+          import path from "node:path";
+          import { buildCcx } from "./build-ccx.mjs";
+          import { verifyCcxAgainstDirectory } from "./ccx-archive.mjs";
+
+          const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "pai-ccx-test-"));
+          try {
+            const first = buildCcx({
+              sourceDirectory: path.join(temporary, "source-a"),
+              outputFile: path.join(temporary, "first.ccx"),
+              sourceCommit: "determinism-test",
+            });
+            const second = buildCcx({
+              sourceDirectory: path.join(temporary, "source-b"),
+              outputFile: path.join(temporary, "second.ccx"),
+              sourceCommit: "determinism-test",
+            });
+
+            const firstBytes = fs.readFileSync(first.outputFile);
+            const secondBytes = fs.readFileSync(second.outputFile);
+            if (!firstBytes.equals(secondBytes)) throw new Error("repeated CCX builds are not byte-identical");
+            if (first.source.treeSha256 !== second.source.treeSha256) throw new Error("source package trees differ");
+
+            const inspected = verifyCcxAgainstDirectory(first.outputFile, first.source.outputDirectory);
+            if (inspected.entries.length !== first.source.entries.length) throw new Error("CCX file count differs from source");
+            if (inspected.sha256 !== first.sha256 || inspected.bytes !== first.bytes) throw new Error("CCX metadata differs from archive");
+
+            console.log(`CCX TEST PASS: ${inspected.entries.length} files, deterministic sha256:${inspected.sha256}`);
+          } finally {
+            fs.rmSync(temporary, { recursive: true, force: true });
+          }
+          EOF
+
+          rm -f scripts/ccx-format.mjs
+          sed -i 's/ccx-format\.mjs/ccx-archive.mjs/g' scripts/check.mjs README.md STATUS.md docs/*.md || true
+          sed -i '/Info-ZIP/d' README.md STATUS.md docs/*.md || true
+          if [ -d vendor ] && ! grep -RInE 'vendor[/\\]' . --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=vendor; then
+            rm -rf vendor
+          fi
+
+      - name: Verify the simplified implementation on Linux
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run verify:distribution
+          ! grep -RInE '(TODO|FIXME|HACK|XXX)' plugin scripts test --exclude-dir=node_modules
+          find plugin scripts test -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check
+          test ! -e scripts/ccx-format.mjs
+
+      - name: Commit the verified source and remove this workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/ccx-simplification.yml
+          git add -A
+          git diff --cached --quiet && {
+            echo 'CCX simplification produced no changes' >&2
+            exit 1
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "refactor: replace custom ZIP stack with deterministic fflate CCX"
+          git push origin HEAD:main
+
+      - name: Dispatch permanent Product CI
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl --fail-with-body -L -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/product-ci.yml/dispatches" \
+            -d '{"ref":"main"}'
