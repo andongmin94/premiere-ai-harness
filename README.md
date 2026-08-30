@@ -30,7 +30,7 @@ Linux의 Info-ZIP 3.0 환경에서는 설치 후보 CCX까지 검증합니다.
 npm run verify:distribution
 ```
 
-GitHub Actions는 Linux와 Windows에서 동일한 소스 패키지를 생성해 파일별 SHA-256을 비교합니다. Linux에서는 고정 타임스탬프와 정렬된 파일 순서로 CCX 설치 후보를 만들고, 중복·경로 탈출·암호화·ZIP data descriptor·숨은 바이트·CRC·소스 불일치를 차단합니다.
+교차 플랫폼 검증이 필요하면 Linux와 Windows에서 각각 `npm ci`와 `npm run verify:distribution`을 실행하고, 생성된 source manifest와 CCX manifest의 파일별 SHA-256을 비교합니다. CCX 검증은 고정 타임스탬프와 정렬된 파일 순서를 사용하며, 중복·경로 탈출·암호화·ZIP data descriptor·숨은 바이트·CRC·소스 불일치를 차단합니다.
 
 ## 빌드 결과
 
@@ -47,7 +47,7 @@ dist/PremiereAIHarness-Core-0.5.1-premierepro.ccx.manifest.json
 ## 실제 호스트·설치 검증 흐름
 
 ```text
-Product CI의 커밋·source tree SHA-256·CCX SHA-256 확인
+검증 대상 커밋과 로컬 source tree SHA-256·CCX SHA-256 기록
 → Creative Cloud Desktop으로 설치
 → Premiere에서 패널 열기
 → 원본 검사 및 실제 Premiere 검증 시작

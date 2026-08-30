@@ -6,7 +6,7 @@
 
 `Premiere AI Harness Core 0.5.1 — Distribution Qualification Candidate`
 
-자동 검증 범위:
+로컬 검증 범위:
 
 - 패널 DOM, UXP entrypoint, Premiere Pro 26.3 API 계약
 - SRT·WebVTT·Adobe 중첩 JSON 전사문 파서
@@ -23,7 +23,7 @@
 - Linux/Windows 교차 플랫폼 재현 소스 패키징
 - 결정론적 CCX와 안전 경로·중복·암호화·CRC·소스 일치 검사
 
-정확한 자동검증 결과는 해당 커밋의 **Product CI** 실행과 `PremiereAIHarness-Core-Distribution-Receipt` 아티팩트에서 확인합니다. 저장소 안에 CI 상태 영수증을 다시 커밋하지 않습니다.
+정확한 검증 결과는 대상 커밋에서 `npm ci`와 `npm run verify:distribution`을 실행하고, 생성된 manifest와 SHA-256 기록을 별도로 보관해 확인합니다. 저장소 안에 검증 상태 영수증을 다시 커밋하지 않습니다.
 
 ## 남은 실제 Adobe 게이트
 

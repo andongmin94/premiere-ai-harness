@@ -4,15 +4,15 @@
 
 `*-uxp-source/`는 UXP Developer Tool에서 로드하는 소스 디렉터리입니다.
 
-`*-premierepro.ccx`는 GitHub의 Linux runner 또는 로컬 Info-ZIP 3.0 환경에서 만든 독립 설치 후보입니다. 파일 타임스탬프, 권한과 파일 순서를 고정하고, 빌드 후 모든 entry를 source directory와 바이트 단위로 비교합니다.
+`*-premierepro.ccx`는 Linux의 Info-ZIP 3.0 환경 또는 동등한 로컬 도구 환경에서 만든 독립 설치 후보입니다. 파일 타임스탬프, 권한과 파일 순서를 고정하고, 빌드 후 모든 entry를 source directory와 바이트 단위로 비교합니다.
 
-Adobe는 일반적인 패키징에는 UXP Developer Tool의 **Package** 기능을 권장합니다. 이 저장소의 CCX 경로는 self-hosted runner 없이 구조와 재현성을 자동 검증하기 위한 제한된 경로입니다.
+Adobe는 일반적인 패키징에는 UXP Developer Tool의 **Package** 기능을 권장합니다. 이 저장소의 CCX 경로는 구조와 재현성을 로컬에서 검증하기 위한 제한된 경로입니다.
 
 ## 설치 시험
 
-1. 대상 커밋의 `Product CI` 실행이 성공했는지 확인합니다.
-2. `PremiereAIHarness-Core-Distribution-Receipt` 아티팩트의 커밋, source tree SHA-256과 CCX SHA-256을 확인합니다.
-3. `PremiereAIHarness-Core-CCX-Candidate`에서 exact `.ccx`를 받습니다.
+1. 대상 커밋에서 `npm ci`와 `npm run verify:distribution`을 실행합니다.
+2. 생성된 source manifest와 CCX manifest의 커밋, source tree SHA-256과 CCX SHA-256을 기록합니다.
+3. 같은 실행에서 생성된 exact `.ccx`를 사용합니다.
 4. Premiere를 한 번 실행한 뒤 종료합니다.
 5. `.ccx`를 더블클릭하고 Creative Cloud Desktop에서 설치를 승인합니다.
 6. Premiere의 UXP Plugins 메뉴에서 패널을 엽니다.

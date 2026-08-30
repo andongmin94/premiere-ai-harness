@@ -98,22 +98,13 @@ for (const obsolete of [
 ]) assert(!fs.existsSync(path.join(root, obsolete)), `obsolete path must be removed: ${obsolete}`);
 assert(!fs.readdirSync(root).some((name) => name.startsWith(".connector-probe")), "connector probe files must be removed");
 
-checkWorkflow();
+checkNoGitHubActions();
 checkAdobeContract(pluginText);
 console.log(`CHECK PASS: ${jsFiles.length} JavaScript files, ${htmlIds.size} DOM ids, Adobe 26.3 contract, version ${manifest.version}`);
 
-function checkWorkflow() {
+function checkNoGitHubActions() {
   const directory = path.join(root, ".github", "workflows");
-  const entries = fs.readdirSync(directory).sort();
-  assert(JSON.stringify(entries) === JSON.stringify(["product-ci.yml"]), "only the permanent Product CI workflow may remain");
-  const workflow = read(path.join(directory, "product-ci.yml"));
-  for (const required of [
-    "ubuntu-latest", "windows-latest", "npm run verify", "npm run package:ccx", "npm run test:ccx",
-    "PremiereAIHarness-Core-Distribution-Receipt", "PremiereAIHarness-Source-Snapshot", "contents: read",
-  ]) assert(workflow.includes(required), `Product CI is missing: ${required}`);
-  for (const forbidden of ["self-hosted", "contents: write", "git push", "reports/product-ci.json", "Record CI result"]) {
-    assert(!workflow.includes(forbidden), `Product CI contains obsolete state mutation: ${forbidden}`);
-  }
+  assert(!fs.existsSync(directory), "GitHub Actions workflows are not used in this repository");
 }
 
 function checkAdobeContract(text) {

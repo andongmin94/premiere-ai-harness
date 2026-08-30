@@ -1,6 +1,6 @@
 # Core 0.5.1 배포 자격검증 체크리스트
 
-## exact 커밋 자동 게이트
+## exact 커밋 로컬 게이트
 
 - [ ] Linux / Windows `npm ci`와 `npm run verify` 성공
 - [ ] 패널 부팅·핵심 흐름 모의시험 성공
@@ -12,11 +12,11 @@
 - [ ] CCX manifest 루트, 안전 경로, 중복 없음
 - [ ] 암호화·ZIP data descriptor·숨은 바이트 없음
 - [ ] CCX CRC와 source directory 파일별 바이트 일치
-- [ ] `PremiereAIHarness-Core-Distribution-Receipt`가 대상 커밋과 일치
+- [ ] source manifest와 CCX manifest가 대상 커밋·SHA-256 기록과 일치
 
 ## 실제 Adobe 호스트·설치 게이트
 
-- [ ] Product CI receipt의 커밋과 CCX SHA-256 확인
+- [ ] 보관한 대상 커밋과 CCX SHA-256 기록 확인
 - [ ] CCX 더블클릭 후 Creative Cloud Desktop 설치 성공
 - [ ] Premiere Pro 26.3+에서 패널 표시
 - [ ] 일반 원본 클립의 `호스트 자체시험` PASS
