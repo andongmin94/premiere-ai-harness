@@ -102,7 +102,7 @@
       if (index > 0) {
         const previous = segments[index - 1];
         const gap = segment.start - previous.end;
-        if (gap <= 1.5 && !/[.!?。！？]$/.test(previous.text)) start = previous.start;
+        if (speakerCompatible(previous, segment) && gap <= 1.5 && !/[.!?。！？]$/.test(previous.text)) start = previous.start;
       }
       output.push(candidate("retake", start, segment.end, 0.99, "재촬영 신호가 포함된 구간"));
     });
@@ -124,12 +124,22 @@
     let runStart = -1;
     for (let index = 0; index <= segments.length; index += 1) {
       const filler = index < segments.length && isFillerOnly(segments[index].text);
-      if (filler && runStart < 0) runStart = index;
-      if ((!filler || index === segments.length) && runStart >= 0) {
-        const runEnd = index - 1;
-        if (runEnd - runStart + 1 >= 2) output.push(candidate("filler", segments[runStart].start, segments[runEnd].end, 0.92, "연속 필러 발화"));
+      const speakerBreak = filler && runStart >= 0 && !speakerCompatible(segments[index - 1], segments[index]);
+      if ((!filler || speakerBreak) && runStart >= 0) {
+        appendFillerCandidate(segments, output, runStart, index - 1);
         runStart = -1;
       }
+      if (filler && runStart < 0) runStart = index;
+      if (index === segments.length && runStart >= 0) {
+        appendFillerCandidate(segments, output, runStart, index - 1);
+        runStart = -1;
+      }
+    }
+  }
+
+  function appendFillerCandidate(segments, output, runStart, runEnd) {
+    if (runEnd - runStart + 1 >= 2) {
+      output.push(candidate("filler", segments[runStart].start, segments[runEnd].end, 0.92, "연속 필러 발화"));
     }
   }
 
@@ -137,7 +147,7 @@
     for (let index = 1; index < segments.length; index += 1) {
       const earlier = segments[index - 1];
       const later = segments[index];
-      if (later.start - earlier.end > 3) continue;
+      if (!speakerCompatible(earlier, later) || later.start - earlier.end > 3) continue;
       const similarity = textSimilarity(earlier.text, later.text);
       if (similarity < rules.duplicateSimilarity) continue;
       const target = normalizeForCompare(later.text).length >= normalizeForCompare(earlier.text).length ? earlier : later;
@@ -208,6 +218,11 @@
     if (rules.minKeepSeconds <= 0) throw new Error("최소 유지 구간은 0보다 커야 합니다.");
   }
 
+  function speakerCompatible(left, right) {
+    const first = normalizeForCompare(left?.speaker);
+    const second = normalizeForCompare(right?.speaker);
+    return !first || !second || first === second;
+  }
   function approvalSafetyError(message) { const error = new Error(message); error.code = "PAI_APPROVAL_SAFETY"; return error; }
   function candidate(type, start, end, confidence, reason) { return { type, start, end, confidence, reason }; }
   function isFillerOnly(text) { const tokens = tokenize(text); return tokens.length > 0 && tokens.length <= 4 && tokens.every((token) => FILLERS.has(token)); }
