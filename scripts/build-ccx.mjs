@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,7 +10,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const FIXED_TIME = new Date("1980-01-01T00:00:00.000Z");
 
 export function buildCcx(options = {}) {
-  assert(process.platform !== "win32", "deterministic CCX packaging requires the POSIX Info-ZIP tool; use GitHub Actions or Adobe UXP Developer Tool on Windows");
+  assert(process.platform !== "win32", "deterministic CCX packaging requires POSIX Info-ZIP 3.0; run npm run verify on Windows and build the repository CCX candidate on a POSIX host");
   assertInfoZip();
 
   const source = packagePlugin(options.sourceDirectory);
@@ -79,7 +78,7 @@ function defaultOutputFile(version) {
 function assertInfoZip() {
   const result = spawnSync("zip", ["-v"], { encoding: "utf8", maxBuffer: 1024 * 1024 });
   if (result.error && result.error.code === "ENOENT") {
-    throw new Error("Info-ZIP 3.0 was not found. Use the GitHub Actions CCX artifact or Adobe UXP Developer Tool.");
+    throw new Error("Info-ZIP 3.0 was not found. Install Info-ZIP 3.0 on a POSIX host or use Adobe UXP Developer Tool for ordinary packaging.");
   }
   if (result.error) throw result.error;
   const output = `${result.stdout || ""}\n${result.stderr || ""}`;
