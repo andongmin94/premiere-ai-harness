@@ -50,7 +50,7 @@
       await buildGeneratedSequence(ppro, context.clip, ranges, resources, Object.assign({}, settings, { frameRate: timing.frameRate }));
       const sequenceSnapshot = snapshots.validateGeneratedSequenceSnapshot(
         await snapshots.readSequenceSnapshot(ppro, resources.sequence),
-        resources.subclipNames
+        resources.subclipNames.map((name, index) => ({ name, duration: ranges[index].end - ranges[index].start }))
       );
       return Object.freeze({
         projectId: runtime.projectIdentity(context.project),
@@ -83,7 +83,7 @@
       await buildGeneratedSequence(ppro, context.clip, ranges, resources, Object.assign({}, settings, { frameRate: timing.frameRate }));
       snapshots.validateGeneratedSequenceSnapshot(
         await snapshots.readSequenceSnapshot(ppro, resources.sequence),
-        resources.subclipNames
+        resources.subclipNames.map((name, index) => ({ name, duration: ranges[index].end - ranges[index].start }))
       );
       const cleanupResult = await cleanupApi.cleanupGenerated(resources, cleanupOptions(settings, previousActive));
       if (!cleanupResult.cleaned) throw new Error(`자체시험 흔적 정리에 실패했습니다: ${cleanupResult.errors.join(" / ")}`);

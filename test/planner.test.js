@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const planner = require("../plugin/lib/planner.js");
 
-function segment(start, end, text) { return Object.freeze({ start, end, text }); }
+function segment(start, end, text, speaker = "") { return Object.freeze({ start, end, text, speaker }); }
 
 test("finds Korean retake signals and includes an incomplete previous phrase", () => {
   const plan = planner.createEditPlan([
@@ -17,6 +17,18 @@ test("finds Korean retake signals and includes an incomplete previous phrase", (
   assert.equal(retake.start, 0);
   assert.equal(retake.end, 2);
   assert.equal(plan.selectedIds.includes(retake.id), false);
+});
+
+test("does not absorb a previous speaker into a retake", () => {
+  const plan = planner.createEditPlan([
+    segment(0, 1.2, "질문을 하나 드리겠습니다", "host"),
+    segment(1.3, 2.0, "아 잠깐만 다시 할게요", "guest"),
+    segment(2.2, 3.2, "답변을 시작하겠습니다.", "guest"),
+  ], { duration: 3.2, preset: "balanced" });
+  const retake = plan.candidates.find((item) => item.type === "retake");
+  assert.ok(retake);
+  assert.equal(retake.start, 1.3);
+  assert.equal(retake.end, 2);
 });
 
 test("finds long silence while preserving sentence-side breathing room", () => {
@@ -38,6 +50,17 @@ test("detects consecutive filler segments and adjacent duplicates", () => {
   ], { duration: 3.2, preset: "tight" });
   assert.ok(plan.candidates.some((item) => item.reason.includes("필러")));
   assert.ok(plan.candidates.some((item) => item.reason.includes("반복")));
+});
+
+test("does not combine fillers or duplicate speech across known speakers", () => {
+  const plan = planner.createEditPlan([
+    segment(0, 0.3, "어", "host"),
+    segment(0.35, 0.7, "음", "guest"),
+    segment(1, 2, "지원 자격을 확인하겠습니다", "host"),
+    segment(2.1, 3.2, "지원 자격을 확인하겠습니다", "guest"),
+  ], { duration: 3.2, preset: "tight" });
+  assert.equal(plan.candidates.some((item) => item.reason.includes("필러")), false);
+  assert.equal(plan.candidates.some((item) => item.reason.includes("반복")), false);
 });
 
 test("manual approval preserves the entire source duration", () => {

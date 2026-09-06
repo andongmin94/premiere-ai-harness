@@ -8,6 +8,7 @@
   "use strict";
 
   const SNAPSHOT_FORMAT = 1;
+  const TIME_EPSILON = 0.001;
 
   async function readSequenceSnapshot(ppro, sequence) {
     if (!sequence) throw new Error("시퀀스 구조를 읽을 수 없습니다.");
@@ -94,17 +95,33 @@
     });
   }
 
-  function validateGeneratedSequenceSnapshot(snapshot, expectedNames) {
+  function validateGeneratedSequenceSnapshot(snapshot, expectedSegments) {
     const normalized = normalizeSequenceSnapshot(snapshot);
-    const names = [...new Set((expectedNames || []).map((name) => String(name || "").trim()).filter(Boolean))];
-    if (!names.length) throw new Error("검증할 생성 서브클립 이름이 없습니다.");
+    const expected = normalizeExpectedSegments(expectedSegments);
     if (normalized.end <= 0) throw new Error("생성된 시퀀스 길이가 비어 있습니다.");
-    const items = allItems(normalized);
-    const foundNames = new Set(items.map((item) => item.projectItemName).filter(Boolean));
-    const foundIds = new Set(items.map((item) => item.projectItemId));
-    if (foundNames.size !== names.length || names.some((name) => !foundNames.has(name))
-      || foundIds.size !== names.length) {
+    const expectedNames = expected.map((item) => item.name);
+    const unique = uniqueTimelineItems(normalized);
+    if (unique.length !== expected.length) {
       throw new Error("생성된 시퀀스에 예상한 모든 서브클립만 들어 있지 않습니다.");
+    }
+    validateTrackGroupCoverage(normalized.videoTracks, expectedNames, "video");
+    validateTrackGroupCoverage(normalized.audioTracks, expectedNames, "audio");
+
+    let cursor = 0;
+    for (let index = 0; index < expected.length; index += 1) {
+      const actual = unique[index];
+      const wanted = expected[index];
+      const expectedEnd = cursor + wanted.duration;
+      if (actual.projectItemName !== wanted.name) {
+        throw new Error("생성된 시퀀스의 서브클립 순서가 예상과 다릅니다.");
+      }
+      if (!sameTime(actual.start, cursor) || !sameTime(actual.end, expectedEnd)) {
+        throw new Error("생성된 시퀀스의 클립 경계 또는 길이가 예상과 다릅니다.");
+      }
+      cursor = expectedEnd;
+    }
+    if (!sameTime(normalized.end, cursor)) {
+      throw new Error("생성된 시퀀스 종료 시간이 예상 유지 구간 합계와 다릅니다.");
     }
     return normalized;
   }
@@ -113,8 +130,8 @@
     const normalized = normalizeSequenceSnapshot(snapshot);
     const count = Number(expectedCount);
     if (!Number.isInteger(count) || count <= 0) throw new Error("예상 러프컷 구간 수가 올바르지 않습니다.");
-    const uniqueItems = new Set(allItems(normalized).map((item) => item.projectItemId));
-    if (normalized.end <= 0 || uniqueItems.size !== count) {
+    const uniqueItems = uniqueTimelineItems(normalized);
+    if (normalized.end <= 0 || uniqueItems.length !== count) {
       throw new Error(`러프컷 시퀀스 구조가 예상 ${count}개 구간과 일치하지 않습니다.`);
     }
     return normalized;
@@ -125,6 +142,46 @@
       return JSON.stringify(normalizeSequenceSnapshot(left)) === JSON.stringify(normalizeSequenceSnapshot(right));
     } catch (_) {
       return false;
+    }
+  }
+
+  function normalizeExpectedSegments(value) {
+    if (!Array.isArray(value) || value.length === 0) throw new Error("검증할 생성 구간이 없습니다.");
+    const names = new Set();
+    return value.map((item, index) => {
+      const name = String(item?.name || "").trim();
+      const duration = Number(item?.duration);
+      if (!name || names.has(name)) throw new Error("검증할 생성 서브클립 이름이 올바르지 않습니다.");
+      if (!Number.isFinite(duration) || duration <= 0 || duration > 12 * 60 * 60) {
+        throw new Error(`검증할 생성 구간 ${index + 1}의 길이가 올바르지 않습니다.`);
+      }
+      names.add(name);
+      return Object.freeze({ name, duration });
+    });
+  }
+
+  function uniqueTimelineItems(snapshot) {
+    const grouped = new Map();
+    for (const item of allItems(snapshot)) {
+      const existing = grouped.get(item.projectItemId);
+      if (!existing) {
+        grouped.set(item.projectItemId, item);
+        continue;
+      }
+      if (existing.projectItemName !== item.projectItemName
+        || !sameTime(existing.start, item.start) || !sameTime(existing.end, item.end)) {
+        throw new Error("같은 생성 서브클립의 A/V 경계가 서로 일치하지 않습니다.");
+      }
+    }
+    return [...grouped.values()].sort(compareItems);
+  }
+
+  function validateTrackGroupCoverage(tracks, expectedNames, kind) {
+    const items = tracks.flatMap((track) => track.items);
+    if (!items.length) return;
+    const names = new Set(items.map((item) => item.projectItemName));
+    if (names.size !== expectedNames.length || expectedNames.some((name) => !names.has(name))) {
+      throw new Error(`생성된 시퀀스의 ${kind} 트랙에 일부 유지 구간이 빠졌습니다.`);
     }
   }
 
@@ -141,6 +198,10 @@
     const number = Number(value);
     if (!Number.isFinite(number) || number < 0 || number > 12 * 60 * 60) throw new Error(`${label} 시간이 올바르지 않습니다.`);
     return Math.round(number * 1000000) / 1000000;
+  }
+
+  function sameTime(left, right) {
+    return Math.abs(Number(left) - Number(right)) <= TIME_EPSILON;
   }
 
   function compareItems(left, right) {

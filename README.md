@@ -8,10 +8,10 @@ Premiere Pro 26.3+에서 대사 중심 원본 클립의 **검토형 러프컷**�
 
 - 프로젝트 패널의 일반 원본 클립 하나 선택
 - Premiere 전사문 또는 SRT / WebVTT / 지원 JSON 분석
-- 재촬영 신호, 긴 무음, 연속 필러, 인접 반복 발화 후보 제안
+- 재촬영 신호, 긴 무음, 연속 필러, 같은 화자의 인접 반복 발화 후보 제안
 - 사용자 승인·거절 후 새 하드 바운더리 서브클립과 새 시퀀스 생성
 - 프로젝트·클립·길이·프레임레이트·Premiere 전사문 재검증
-- 생성 직후 시퀀스 길이·트랙·클립·경계 검증
+- 생성 직후 시퀀스 길이·트랙·클립 순서·A/V 경계 검증
 - 부분 실패 시 이번 작업의 시퀀스·서브클립·빈 롤백
 - 실제 Premiere 환경의 호스트 자체시험과 의도된 실패 롤백 시험
 - 프로젝트 저장 전후와 새 패널 세션에서 동일 시퀀스 구조 확인
@@ -19,18 +19,22 @@ Premiere Pro 26.3+에서 대사 중심 원본 클립의 **검토형 러프컷**�
 
 ## 개발 검증
 
+Linux, macOS, Windows의 소스 검증은 다음 명령을 사용합니다.
+
 ```bash
 npm ci
 npm run verify
 ```
 
-Linux의 Info-ZIP 3.0 환경에서는 설치 후보 CCX까지 검증합니다.
+결정론적 설치 후보 CCX 생성과 CCX 내부 검증은 **POSIX 환경의 Info-ZIP 3.0**을 요구합니다.
 
 ```bash
 npm run verify:distribution
 ```
 
-교차 플랫폼 검증이 필요하면 Linux와 Windows에서 각각 `npm ci`와 `npm run verify:distribution`을 실행하고, 생성된 source manifest와 CCX manifest의 파일별 SHA-256을 비교합니다. CCX 검증은 고정 타임스탬프와 정렬된 파일 순서를 사용하며, 중복·경로 탈출·암호화·ZIP data descriptor·숨은 바이트·CRC·소스 불일치를 차단합니다.
+교차 플랫폼 확인이 필요하면 각 플랫폼에서 `npm ci`와 `npm run verify`를 실행하고 생성된 source manifest의 파일별 SHA-256을 비교합니다. CCX 자체의 재현성 검증은 같은 검증 대상 커밋을 POSIX Info-ZIP 3.0 환경에서 빌드해 수행합니다. CCX 검증은 고정 타임스탬프와 정렬된 파일 순서를 사용하며, 중복·경로 탈출·암호화·ZIP data descriptor·숨은 바이트·CRC·소스 불일치를 차단합니다.
+
+Windows에서는 `npm run verify:distribution`을 지원하지 않습니다. 일반적인 Windows 패키징이 필요하면 Adobe UXP Developer Tool의 Package 기능을 사용하고, 이 저장소가 정의한 결정론적 CCX 후보는 POSIX 빌드 결과를 사용합니다.
 
 ## 빌드 결과
 
