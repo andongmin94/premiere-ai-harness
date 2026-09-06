@@ -50,7 +50,7 @@
       await buildGeneratedSequence(ppro, context.clip, ranges, resources, Object.assign({}, settings, { frameRate: timing.frameRate }));
       const sequenceSnapshot = snapshots.validateGeneratedSequenceSnapshot(
         await snapshots.readSequenceSnapshot(ppro, resources.sequence),
-        resources.subclipNames
+        expectedSequenceSegments(resources.subclipNames, ranges)
       );
       return Object.freeze({
         projectId: runtime.projectIdentity(context.project),
@@ -83,7 +83,7 @@
       await buildGeneratedSequence(ppro, context.clip, ranges, resources, Object.assign({}, settings, { frameRate: timing.frameRate }));
       snapshots.validateGeneratedSequenceSnapshot(
         await snapshots.readSequenceSnapshot(ppro, resources.sequence),
-        resources.subclipNames
+        expectedSequenceSegments(resources.subclipNames, ranges)
       );
       const cleanupResult = await cleanupApi.cleanupGenerated(resources, cleanupOptions(settings, previousActive));
       if (!cleanupResult.cleaned) throw new Error(`자체시험 흔적 정리에 실패했습니다: ${cleanupResult.errors.join(" / ")}`);
@@ -243,6 +243,16 @@
       sequence: null,
       sequenceBaseline: sequenceBaseline || new Set(),
     };
+  }
+
+  function expectedSequenceSegments(names, ranges) {
+    if (!Array.isArray(names) || !Array.isArray(ranges) || names.length !== ranges.length || names.length === 0) {
+      throw new Error("생성 시퀀스 검증 입력이 올바르지 않습니다.");
+    }
+    return names.map((name, index) => Object.freeze({
+      name: String(name),
+      duration: Number(ranges[index].end) - Number(ranges[index].start),
+    }));
   }
 
   function selectionResult(context, timing, hasTranscript) {
