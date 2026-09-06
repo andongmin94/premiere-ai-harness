@@ -8,6 +8,12 @@ const { makeFixture } = require("./premiere-fixture.js");
 
 const fast = { delay: async () => {}, timeoutMs: 300 };
 
+function expectedSegments(snapshot) {
+  const tracks = [...snapshot.videoTracks, ...snapshot.audioTracks];
+  const track = tracks.find((item) => item.items.length > 0);
+  return track.items.map((item) => ({ name: item.projectItemName, duration: item.end - item.start }));
+}
+
 test("reads deterministic video and audio sequence structure", async () => {
   const fixture = makeFixture();
   const created = await adapter.createRoughCut(fixture.ppro, [
@@ -19,6 +25,7 @@ test("reads deterministic video and audio sequence structure", async () => {
   assert.equal(snapshot.videoTracks[0].items.length, 2);
   assert.equal(snapshot.audioTracks[0].items.length, 2);
   assert.deepEqual(snapshots.validateSequenceSegmentCount(snapshot, 2), snapshot);
+  assert.deepEqual(snapshots.validateGeneratedSequenceSnapshot(snapshot, expectedSegments(snapshot)), snapshot);
   assert.equal(snapshots.sameSequenceSnapshot(snapshot, JSON.parse(JSON.stringify(snapshot))), true);
 });
 
@@ -46,21 +53,55 @@ test("rejects empty or incomplete generated sequences and rolls them back", asyn
   ], "INCOMPLETE", fast), /예상한 모든/);
   assert.equal(incomplete.project.sequences.length, 0);
 });
+
 test("rejects duplicate-name items with different project identities", async () => {
   const fixture = makeFixture();
   const created = await adapter.createRoughCut(fixture.ppro, [
     { start: 0, end: 1 },
     { start: 2, end: 3 },
   ], "DUPLICATE_ID", fast);
+  const expected = expectedSegments(created.sequenceSnapshot);
   const duplicate = structuredClone(created.sequenceSnapshot);
   duplicate.videoTracks[0].items.push({
     ...duplicate.videoTracks[0].items[0],
     projectItemId: "foreign-id",
   });
-  const expectedNames = created.sequenceSnapshot.videoTracks[0].items.map((item) => item.projectItemName);
   assert.throws(
-    () => snapshots.validateGeneratedSequenceSnapshot(duplicate, expectedNames),
+    () => snapshots.validateGeneratedSequenceSnapshot(duplicate, expected),
     /예상한 모든 서브클립만/
   );
 });
 
+test("rejects shifted clip boundaries even when clip ids and count still match", async () => {
+  const fixture = makeFixture();
+  const created = await adapter.createRoughCut(fixture.ppro, [
+    { start: 0, end: 1 },
+    { start: 2, end: 3 },
+  ], "SHIFTED", fast);
+  const expected = expectedSegments(created.sequenceSnapshot);
+  const shifted = structuredClone(created.sequenceSnapshot);
+  for (const tracks of [shifted.videoTracks, shifted.audioTracks]) {
+    tracks[0].items[1].start += 0.1;
+    tracks[0].items[1].end += 0.1;
+  }
+  shifted.end += 0.1;
+  assert.throws(
+    () => snapshots.validateGeneratedSequenceSnapshot(shifted, expected),
+    /클립 경계 또는 길이|종료 시간/
+  );
+});
+
+test("rejects a partial A/V layout while still allowing truly single-media sequences", async () => {
+  const fixture = makeFixture();
+  const created = await adapter.createRoughCut(fixture.ppro, [
+    { start: 0, end: 1 },
+    { start: 2, end: 3 },
+  ], "PARTIAL_AV", fast);
+  const expected = expectedSegments(created.sequenceSnapshot);
+  const partial = structuredClone(created.sequenceSnapshot);
+  partial.videoTracks[0].items.pop();
+  assert.throws(
+    () => snapshots.validateGeneratedSequenceSnapshot(partial, expected),
+    /video 트랙에 일부 유지 구간/
+  );
+});
