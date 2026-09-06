@@ -11,19 +11,20 @@
 - 패널 DOM, UXP entrypoint, Premiere Pro 26.3 API 계약
 - SRT·WebVTT·Adobe 중첩 JSON 전사문 파서
 - 로컬 편집 플래너와 승인하지 않은 삭제 차단
+- 서로 다른 화자의 재촬영·필러·반복 발화 오탐 차단
 - 프로젝트·원본·전사문 stale-state 차단
 - 프레임 안쪽 정렬과 사라지는 유지 구간 차단
-- 생성 시퀀스의 종료 시간·트랙·클립·경계 검증
+- 생성 시퀀스의 종료 시간·트랙·클립 순서·A/V 경계 검증
 - 부분 mutation 뒤 이번 작업의 시퀀스·빈·서브클립 롤백
 - 동일 이름의 기존 사용자 시퀀스 보존
 - 호스트 자체시험과 의도된 실패 롤백 시험
 - 프로젝트 저장 전후와 새 패널 세션의 시퀀스 구조 동일성 검증
 - 패널 부팅 및 핵심 사용자 흐름 모의시험
 - 복잡도와 coverage 게이트
-- Linux/Windows 교차 플랫폼 재현 소스 패키징
-- 결정론적 CCX와 안전 경로·중복·암호화·CRC·소스 일치 검사
+- Linux/macOS/Windows 교차 플랫폼 재현 소스 패키징
+- POSIX Info-ZIP 3.0 기반 결정론적 CCX와 안전 경로·중복·암호화·CRC·소스 일치 검사
 
-정확한 검증 결과는 대상 커밋에서 `npm ci`와 `npm run verify:distribution`을 실행하고, 생성된 manifest와 SHA-256 기록을 별도로 보관해 확인합니다. 저장소 안에 검증 상태 영수증을 다시 커밋하지 않습니다.
+정확한 소스 검증 결과는 대상 커밋에서 `npm ci`와 `npm run verify`를 실행해 확인합니다. 결정론적 CCX 검증은 같은 커밋을 POSIX Info-ZIP 3.0 환경에서 `npm run verify:distribution`으로 실행하고, 생성된 manifest와 SHA-256 기록을 별도로 보관합니다. 저장소 안에 검증 상태 영수증을 다시 커밋하지 않습니다.
 
 ## 남은 실제 Adobe 게이트
 
