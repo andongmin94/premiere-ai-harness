@@ -91,6 +91,41 @@ test("rejects shifted clip boundaries even when clip ids and count still match",
   );
 });
 
+test("rejects changed generated-subclip order", async () => {
+  const fixture = makeFixture();
+  const created = await adapter.createRoughCut(fixture.ppro, [
+    { start: 0, end: 1 },
+    { start: 2, end: 3 },
+  ], "ORDER", fast);
+  const expected = expectedSegments(created.sequenceSnapshot);
+  const reordered = structuredClone(created.sequenceSnapshot);
+  for (const tracks of [reordered.videoTracks, reordered.audioTracks]) {
+    const first = tracks[0].items[0];
+    const second = tracks[0].items[1];
+    [first.projectItemId, second.projectItemId] = [second.projectItemId, first.projectItemId];
+    [first.projectItemName, second.projectItemName] = [second.projectItemName, first.projectItemName];
+  }
+  assert.throws(
+    () => snapshots.validateGeneratedSequenceSnapshot(reordered, expected),
+    /서브클립 순서/
+  );
+});
+
+test("rejects inconsistent A/V boundaries for the same generated subclip", async () => {
+  const fixture = makeFixture();
+  const created = await adapter.createRoughCut(fixture.ppro, [
+    { start: 0, end: 1 },
+    { start: 2, end: 3 },
+  ], "AV_MISMATCH", fast);
+  const expected = expectedSegments(created.sequenceSnapshot);
+  const mismatch = structuredClone(created.sequenceSnapshot);
+  mismatch.audioTracks[0].items[1].end += 0.1;
+  assert.throws(
+    () => snapshots.validateGeneratedSequenceSnapshot(mismatch, expected),
+    /A\/V 경계/
+  );
+});
+
 test("rejects a partial A/V layout while still allowing truly single-media sequences", async () => {
   const fixture = makeFixture();
   const created = await adapter.createRoughCut(fixture.ppro, [
