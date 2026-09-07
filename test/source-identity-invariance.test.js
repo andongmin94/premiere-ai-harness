@@ -56,7 +56,7 @@ test("source identity APIs must be available before any rough-cut mutation", asy
   const missingPath = makeFixture({ missingSourceMediaPathApi: true });
   await assert.rejects(
     () => adapter.createRoughCut(missingPath.ppro, [{ start: 0, end: 1 }], "NO_PATH_API", fast),
-    /원본 클립의 미디어 경로 API/
+    /원본 검증 API/
   );
   assert.equal(missingPath.project.transactions.length, 0);
   assert.equal(hasGeneratedItem(missingPath, "PAI_OUTPUT_"), false);
@@ -64,7 +64,7 @@ test("source identity APIs must be available before any rough-cut mutation", asy
   const missingBoundaries = makeFixture({ missingSourceBoundaryApi: true });
   await assert.rejects(
     () => adapter.createRoughCut(missingBoundaries.ppro, [{ start: 0, end: 1 }], "NO_SOURCE_BOUNDARY", fast),
-    /원본 VIDEO source in\/out API/
+    /원본 검증 API/
   );
   assert.equal(missingBoundaries.project.transactions.length, 0);
 });
