@@ -21,7 +21,6 @@ test("parses WebVTT cue identifiers, settings, and NOTE blocks", () => {
   ]);
 });
 
-
 test("accepts WebVTT header metadata before the first blank line", () => {
   const segments = transcript.parseWebVtt(`WEBVTT - export\nKind: captions\nLanguage: ko\n\n00:00.000 --> 00:01.000\n안녕하세요`);
   assert.equal(segments[0].text, "안녕하세요");
@@ -97,4 +96,47 @@ test("keeps Adobe segment arrays when nested timed words are longer", () => {
     ],
   });
   assert.deepEqual(segments.map((segment) => segment.text), ["first complete segment", "second complete segment"]);
+});
+
+test("rejects oversized raw transcript input before format parsing", () => {
+  const oversized = "x".repeat(16 * 1024 * 1024 + 1);
+  assert.throws(() => transcript.parseTranscript(oversized), /자를 넘을 수 없습니다/);
+});
+
+test("rejects unbounded generic JSON arrays and traversal work", () => {
+  assert.throws(
+    () => transcript.parseTranscriptJson({ noise: Array.from({ length: 40001 }, () => 0) }),
+    /JSON 배열이 너무 커/
+  );
+
+  const wideObject = Object.fromEntries(Array.from({ length: 25 }, (_, index) => [`k${index}`, index]));
+  assert.throws(
+    () => transcript.parseTranscriptJson({ items: Array(20000).fill(wideObject) }),
+    /JSON 구조가 너무 커/
+  );
+});
+
+test("skips huge nested word arrays when an Adobe segment already has text", () => {
+  const words = Array.from({ length: 10000 }, (_, index) => ({ start: index / 100, duration: 0.01, value: `word-${index}` }));
+  const segments = transcript.parseTranscriptJson({ segments: [
+    { start: 0, end: 1, text: "authoritative segment text", words },
+  ] });
+  assert.equal(segments[0].text, "authoritative segment text");
+});
+
+test("bounds word-only segments and normalized transcript text volume", () => {
+  const tooManyWords = Array.from({ length: 5001 }, () => ({ word: "x" }));
+  assert.throws(
+    () => transcript.parseTranscriptJson({ segments: [{ start: 0, end: 1, words: tooManyWords }] }),
+    /단어 수가 지원 상한/
+  );
+
+  assert.throws(
+    () => transcript.normalizeSegments([{ start: 0, end: 1, text: "x".repeat(64 * 1024 + 1) }]),
+    /텍스트가 너무 깁니다/
+  );
+
+  const chunk = "x".repeat(64 * 1024);
+  const segments = Array.from({ length: 65 }, (_, index) => ({ start: index * 2, end: index * 2 + 1, text: chunk }));
+  assert.throws(() => transcript.normalizeSegments(segments), /텍스트 총량/);
 });

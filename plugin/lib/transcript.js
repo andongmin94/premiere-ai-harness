@@ -7,6 +7,13 @@
 
   const MAX_SEGMENTS = 20000;
   const MAX_DURATION_SECONDS = 12 * 60 * 60;
+  const MAX_INPUT_CHARS = 16 * 1024 * 1024;
+  const MAX_JSON_ARRAY_ITEMS = 40000;
+  const MAX_JSON_TRAVERSAL_UNITS = 500000;
+  const MAX_SEGMENT_TEXT_CHARS = 64 * 1024;
+  const MAX_TOTAL_TEXT_CHARS = 4 * 1024 * 1024;
+  const MAX_SPEAKER_CHARS = 4096;
+  const MAX_WORDS_PER_SEGMENT = 5000;
   const ARRAY_KEY_PRIORITY = Object.freeze({
     segments: 10000,
     captions: 8000,
@@ -19,8 +26,7 @@
   const REJECTED_ARRAY_KEYS = new Set(["words", "word", "tokens", "token"]);
 
   function parseTranscript(input, formatHint) {
-    const text = String(input || "").replace(/^\uFEFF/, "").trim();
-    if (!text) throw transcriptError("전사문이 비어 있습니다.");
+    const text = requireTranscriptText(input);
     const hint = String(formatHint || "").toLowerCase();
     if (hint === "vtt") return parseWebVtt(text);
     if (hint === "srt") return parseSrt(text);
@@ -33,7 +39,8 @@
     }
   }
 
-  function parseSrt(text) {
+  function parseSrt(input) {
+    const text = requireTranscriptText(input);
     const blocks = normalizeNewlines(text).split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
     const segments = [];
     for (let blockIndex = 0; blockIndex < blocks.length; blockIndex += 1) {
@@ -44,11 +51,13 @@
       const body = cleanCaptionText(lines.slice(1).join(" "));
       if (!body) throw transcriptError(`SRT ${blockIndex + 1}번 자막의 텍스트가 비어 있습니다.`);
       segments.push({ start: timing.start, end: timing.end, text: body });
+      requireSegmentCount(segments.length);
     }
     return normalizeSegments(segments);
   }
 
-  function parseWebVtt(text) {
+  function parseWebVtt(input) {
+    const text = requireTranscriptText(input);
     const normalized = normalizeNewlines(text);
     const lines = normalized.split("\n");
     if (!/^WEBVTT(?:\s|$)/i.test(String(lines[0] || "").trim())) throw transcriptError("WebVTT 헤더가 없습니다.");
@@ -67,44 +76,59 @@
       const caption = cleanCaptionText(lines.slice(timingIndex + 1).join(" "));
       if (!caption) throw transcriptError(`WebVTT ${blockIndex + 1}번 cue의 텍스트가 비어 있습니다.`);
       segments.push({ start: timing.start, end: timing.end, text: caption });
+      requireSegmentCount(segments.length);
     }
     return normalizeSegments(segments);
   }
 
   function parseTranscriptJson(value) {
     const candidates = [];
-    findSegmentArrays(value, candidates, [], 0);
+    findSegmentArrays(value, candidates, [], 0, { units: 0 });
     const usable = candidates.map((candidate) => Object.assign(candidate, { score: scoreSegmentArray(candidate) }))
       .filter((candidate) => candidate.score > 0)
       .sort((left, right) => right.score - left.score || right.items.length - left.items.length);
     if (!usable.length) throw transcriptError("JSON에서 타임코드가 있는 전사 구간을 찾지 못했습니다.");
+    requireSegmentCount(usable[0].items.length);
     return normalizeSegments(usable[0].items.map(normalizeJsonSegment).filter(Boolean));
   }
 
   function normalizeSegments(rawSegments) {
     if (!Array.isArray(rawSegments) || rawSegments.length === 0) throw transcriptError("유효한 전사 구간이 없습니다.");
-    if (rawSegments.length > MAX_SEGMENTS) throw transcriptError(`전사 구간은 ${MAX_SEGMENTS.toLocaleString()}개를 넘을 수 없습니다.`);
+    requireSegmentCount(rawSegments.length);
+    let totalTextChars = 0;
     const segments = rawSegments.map((segment, index) => {
       const start = finiteSeconds(segment.start, `구간 ${index + 1} 시작`);
       const end = finiteSeconds(segment.end, `구간 ${index + 1} 종료`);
       const text = normalizeText(segment.text);
+      const speaker = normalizeText(segment.speaker || "");
       if (start < 0 || end <= start) throw transcriptError(`구간 ${index + 1}의 시간이 잘못되었습니다.`);
       if (end > MAX_DURATION_SECONDS) throw transcriptError("전사문 길이가 지원 상한을 넘었습니다.");
       if (!text) throw transcriptError(`구간 ${index + 1}의 텍스트가 비어 있습니다.`);
-      return { start, end, text, speaker: normalizeText(segment.speaker || "") };
+      if (text.length > MAX_SEGMENT_TEXT_CHARS) throw transcriptError(`구간 ${index + 1}의 텍스트가 너무 깁니다.`);
+      if (speaker.length > MAX_SPEAKER_CHARS) throw transcriptError(`구간 ${index + 1}의 화자 이름이 너무 깁니다.`);
+      totalTextChars += text.length + speaker.length;
+      if (totalTextChars > MAX_TOTAL_TEXT_CHARS) throw transcriptError("전사문 텍스트 총량이 지원 상한을 넘었습니다.");
+      return { start, end, text, speaker };
     }).sort((left, right) => left.start - right.start || left.end - right.end)
       .map((segment, index) => Object.freeze(Object.assign({ id: `seg-${String(index + 1).padStart(5, "0")}` }, segment)));
     return Object.freeze(segments);
   }
 
-  function findSegmentArrays(value, output, path, depth) {
-    if (depth > 8 || value == null) return;
+  function findSegmentArrays(value, output, path, depth, budget) {
+    if (depth > 8 || value == null || typeof value !== "object") return;
+    chargeTraversal(budget, 1);
     if (Array.isArray(value)) {
+      const lastKey = String(path[path.length - 1] || "").toLowerCase();
+      if (REJECTED_ARRAY_KEYS.has(lastKey)) return;
+      if (value.length > MAX_JSON_ARRAY_ITEMS) throw transcriptError("전사 JSON 배열이 너무 커서 안전하게 분석할 수 없습니다.");
+      chargeTraversal(budget, value.length);
       if (value.length && value.some(looksLikeJsonSegment)) output.push({ items: value, path: path.slice() });
-      for (let index = 0; index < value.length; index += 1) findSegmentArrays(value[index], output, path.concat(String(index)), depth + 1);
-    } else if (typeof value === "object") {
-      for (const [key, child] of Object.entries(value)) findSegmentArrays(child, output, path.concat(key), depth + 1);
+      for (let index = 0; index < value.length; index += 1) findSegmentArrays(value[index], output, path.concat(String(index)), depth + 1, budget);
+      return;
     }
+    const entries = Object.entries(value);
+    chargeTraversal(budget, entries.length);
+    for (const [key, child] of entries) findSegmentArrays(child, output, path.concat(key), depth + 1, budget);
   }
 
   function looksLikeJsonSegment(value) {
@@ -121,11 +145,16 @@
     const startRaw = readStart(value);
     const start = secondsFromUnknown(startRaw);
     const end = secondsFromUnknown(readEnd(value, startRaw));
-    const wordText = Array.isArray(value.words) ? value.words.map((word) => firstDefined(word?.text, word?.word, word?.value, "")).join(" ") : "";
+    const directText = firstDefined(value.text, value.transcript, value.caption);
+    let wordText = "";
+    if (directText === undefined && Array.isArray(value.words)) {
+      if (value.words.length > MAX_WORDS_PER_SEGMENT) throw transcriptError("한 전사 구간의 단어 수가 지원 상한을 넘었습니다.");
+      wordText = value.words.map((word) => firstDefined(word?.text, word?.word, word?.value, "")).join(" ");
+    }
     return {
       start,
       end,
-      text: firstDefined(value.text, value.transcript, value.caption, wordText, value.value),
+      text: firstDefined(directText, wordText, value.value),
       speaker: firstDefined(value.speaker, value.speakerName, value.speakerLabel, ""),
     };
   }
@@ -191,6 +220,22 @@
       if (Number.isFinite(value.value)) return Number(value.value);
     }
     return Number.NaN;
+  }
+
+  function requireTranscriptText(value) {
+    const text = String(value || "").replace(/^\uFEFF/, "").trim();
+    if (!text) throw transcriptError("전사문이 비어 있습니다.");
+    if (text.length > MAX_INPUT_CHARS) throw transcriptError(`전사문 입력은 ${MAX_INPUT_CHARS.toLocaleString()}자를 넘을 수 없습니다.`);
+    return text;
+  }
+
+  function requireSegmentCount(count) {
+    if (count > MAX_SEGMENTS) throw transcriptError(`전사 구간은 ${MAX_SEGMENTS.toLocaleString()}개를 넘을 수 없습니다.`);
+  }
+
+  function chargeTraversal(budget, amount) {
+    budget.units += amount;
+    if (budget.units > MAX_JSON_TRAVERSAL_UNITS) throw transcriptError("전사 JSON 구조가 너무 커서 안전하게 분석할 수 없습니다.");
   }
 
   function timeLike(value) { return Number.isFinite(secondsFromUnknown(value)); }

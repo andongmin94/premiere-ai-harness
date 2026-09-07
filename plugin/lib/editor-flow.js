@@ -42,7 +42,7 @@
       if (!PAI.sameSelection(session.selection, loaded)) {
         throw new Error("선택 클립이 바뀌었습니다. 다시 검사하십시오.");
       }
-      const segments = PAI.parseTranscriptJson(JSON.parse(loaded.json));
+      const segments = PAI.parseTranscript(loaded.json, "json");
       commitTranscript(loaded, { source: "premiere", raw: loaded.json, segments });
       qualification.recordPremiereTranscript(loaded, segments);
       view.setStatus(`Premiere 전사문 ${segments.length}개 구간을 분석했습니다.`, "success");
