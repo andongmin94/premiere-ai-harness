@@ -11,6 +11,7 @@ const packageJson = require("../package.json");
 function sha256(value) { return crypto.createHash("sha256").update(value).digest("hex"); }
 function writeJson(directory, name, value) { const file = path.join(directory, name); fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`); return file; }
 function previousVersion() { return packageJson.version === "0.0.0" ? "0.0.1" : "0.0.0"; }
+function higherVersion() { const major = Number(packageJson.version.split(".")[0]); return `${major + 1}.0.0`; }
 function snapshot() {
   const item = { projectItemId: "subclip-1", projectItemName: "clip-1", start: 0, end: 1 };
   return { formatVersion: 1, end: 1, videoTracks: [{ index: 0, items: [item] }], audioTracks: [{ index: 0, items: [item] }] };
@@ -110,7 +111,7 @@ test("creates an external pending verification workspace from qualification evid
   });
 });
 
-test("refuses repository workspaces and a current-version update source", async () => {
+test("refuses repository workspaces and non-lower update source versions", async () => {
   const api = await import("../scripts/init-distribution-verification.mjs");
   await withFixture(async (fixture) => {
     const repositoryWorkspace = path.join(__dirname, "..", "dist", "verification-workspace-test");
@@ -121,11 +122,15 @@ test("refuses repository workspaces and a current-version update source", async 
     }), /outside the repository/);
     assert.equal(fs.existsSync(repositoryWorkspace), false);
 
-    assert.throws(() => api.initDistributionVerificationWorkspace({
-      qualificationEvidenceFile: fixture.evidenceFile,
-      previousVersion: packageJson.version,
-      workspaceDirectory: path.join(fixture.root, "same-version"),
-    }), /must differ/);
+    for (const previousVersionValue of [packageJson.version, higherVersion()]) {
+      const workspaceDirectory = path.join(fixture.root, `bad-version-${previousVersionValue.replace(/\./g, "-")}`);
+      assert.throws(() => api.initDistributionVerificationWorkspace({
+        qualificationEvidenceFile: fixture.evidenceFile,
+        previousVersion: previousVersionValue,
+        workspaceDirectory,
+      }), /must be lower/);
+      assert.equal(fs.existsSync(workspaceDirectory), false);
+    }
   });
 });
 
