@@ -173,8 +173,11 @@
     if (String(result?.clipId || "") !== String(selection?.clipId || "")) {
       throw new Error("자체시험을 실행한 원본 클립이 검증 대상과 다릅니다.");
     }
-    if (Math.abs(Number(result?.duration) - Number(selection?.duration)) > 0.002
-      || Math.abs(Number(result?.frameRate) - Number(selection?.frameRate)) > 0.0001) {
+    const duration = Number(result?.duration);
+    const frameRate = Number(result?.frameRate);
+    if (!Number.isFinite(duration) || !Number.isFinite(frameRate)
+      || Math.abs(duration - Number(selection?.duration)) > 0.002
+      || Math.abs(frameRate - Number(selection?.frameRate)) > 0.0001) {
       throw new Error("자체시험을 실행한 원본의 길이 또는 프레임레이트가 검증 대상과 다릅니다.");
     }
   }
