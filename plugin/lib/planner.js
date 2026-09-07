@@ -8,6 +8,8 @@
   const EPSILON = 1e-9;
   const MAX_RETAKE_LOOKBACK_SECONDS = 6;
   const MAX_RETAKE_GAP_SECONDS = 1.5;
+  const MAX_RETAKE_COMPLETED_GAP_SECONDS = 0.6;
+  const MAX_RETAKE_COMPLETED_LOOKBACK_SECONDS = 4;
   const MAX_FILLER_GAP_SECONDS = 0.8;
   const MIN_DUPLICATE_CHARS = 8;
   const MIN_DUPLICATE_LENGTH_RATIO = 0.65;
@@ -117,7 +119,12 @@
       if (!speakerCompatible(previous, marker)) break;
       if (following.start - previous.end > MAX_RETAKE_GAP_SECONDS) break;
       if (marker.start - previous.start > MAX_RETAKE_LOOKBACK_SECONDS) break;
-      if (endsSentence(previous.text)) break;
+      if (endsSentence(previous.text)) {
+        if (cursor === index - 1
+          && marker.start - previous.end <= MAX_RETAKE_COMPLETED_GAP_SECONDS
+          && marker.start - previous.start <= MAX_RETAKE_COMPLETED_LOOKBACK_SECONDS) start = previous.start;
+        break;
+      }
       start = previous.start;
     }
     return start;
