@@ -12,7 +12,9 @@ export function initDistributionVerificationWorkspace(options = {}) {
   const previousVersion = requiredSemver(options.previousVersion, "previous version");
   const workspaceDirectory = path.resolve(requiredPath(options.workspaceDirectory, "workspace directory"));
   const qualification = verifyQualificationEvidence(readJson(qualificationEvidenceFile));
-  if (previousVersion === qualification.version) throw new Error("previous version must differ from the current candidate version");
+  if (compareVersions(previousVersion, qualification.version) >= 0) {
+    throw new Error("previous version must be lower than the current candidate version");
+  }
   assertOutsideRepository(workspaceDirectory);
   prepareEmptyDirectory(workspaceDirectory);
   for (const name of EVENT_NAMES) fs.mkdirSync(path.join(workspaceDirectory, name), { recursive: true });
@@ -121,6 +123,15 @@ function instructionsText(version, previousVersion) {
   ].join("\n");
 }
 
+function compareVersions(left, right) {
+  const first = String(left).split(".").map(Number);
+  const second = String(right).split(".").map(Number);
+  for (let index = 0; index < 3; index += 1) {
+    const delta = first[index] - second[index];
+    if (delta) return delta;
+  }
+  return 0;
+}
 function readJson(file) { return JSON.parse(fs.readFileSync(file, "utf8")); }
 function requiredPath(value, label) { const text = String(value || "").trim(); if (!text) throw new Error(`${label} path is required`); return text; }
 function requiredSemver(value, label) { const text = String(value || "").trim(); if (!/^\d+\.\d+\.\d+$/.test(text)) throw new Error(`${label} must be semver`); return text; }
