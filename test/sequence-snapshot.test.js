@@ -98,6 +98,18 @@ test("rejects shifted clip boundaries even when clip ids and count still match",
   );
 });
 
+test("rejects initially slipped generated TrackItems before blessing the snapshot baseline", async () => {
+  const fixture = makeFixture();
+  const created = await adapter.createRoughCut(fixture.ppro, [{ start: 1, end: 2 }], "INITIAL_SLIP", fast);
+  const expected = expectedSegments(created.sequenceSnapshot);
+  const slipped = structuredClone(created.sequenceSnapshot);
+  for (const tracks of [slipped.videoTracks, slipped.audioTracks]) {
+    tracks[0].items[0].trackSourceIn += 0.1;
+    tracks[0].items[0].trackSourceOut += 0.1;
+  }
+  assert.throws(() => snapshots.validateGeneratedSequenceSnapshot(slipped, expected), /source 범위/);
+});
+
 test("rejects changed generated-subclip order", async () => {
   const fixture = makeFixture();
   const created = await adapter.createRoughCut(fixture.ppro, [
