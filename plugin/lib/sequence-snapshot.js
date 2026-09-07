@@ -7,20 +7,22 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function (runtime) {
   "use strict";
 
-  const SNAPSHOT_FORMAT = 1;
+  const SNAPSHOT_FORMAT = 2;
   const TIME_EPSILON = 0.001;
 
   async function readSequenceSnapshot(ppro, sequence) {
     if (!sequence) throw new Error("시퀀스 구조를 읽을 수 없습니다.");
     const clipType = Number(ppro?.Constants?.TrackItemType?.CLIP);
     if (!Number.isInteger(clipType)) throw new Error("Premiere 트랙 항목 상수를 읽지 못했습니다.");
+    const mediaTypes = ppro?.Constants?.MediaType;
+    if (mediaTypes?.VIDEO == null || mediaTypes?.AUDIO == null) throw new Error("Premiere MediaType 상수를 읽지 못했습니다.");
     const end = readSeconds(await sequence.getEndTime(), "시퀀스 종료");
-    const videoTracks = await readTrackGroup(sequence, "video", clipType);
-    const audioTracks = await readTrackGroup(sequence, "audio", clipType);
+    const videoTracks = await readTrackGroup(sequence, "video", clipType, mediaTypes.VIDEO);
+    const audioTracks = await readTrackGroup(sequence, "audio", clipType, mediaTypes.AUDIO);
     return normalizeSequenceSnapshot({ formatVersion: SNAPSHOT_FORMAT, end, videoTracks, audioTracks });
   }
 
-  async function readTrackGroup(sequence, kind, clipType) {
+  async function readTrackGroup(sequence, kind, clipType, mediaType) {
     const countMethod = kind === "video" ? "getVideoTrackCount" : "getAudioTrackCount";
     const trackMethod = kind === "video" ? "getVideoTrack" : "getAudioTrack";
     const count = Number(await sequence[countMethod]());
@@ -33,27 +35,35 @@
       if (!Array.isArray(rawItems)) throw new Error(`${kind} 트랙 ${index + 1}의 클립 목록이 올바르지 않습니다.`);
       const items = [];
       for (let itemIndex = 0; itemIndex < rawItems.length; itemIndex += 1) {
-        items.push(await readTrackItem(rawItems[itemIndex], `${kind} ${index + 1}/${itemIndex + 1}`));
+        items.push(await readTrackItem(rawItems[itemIndex], `${kind} ${index + 1}/${itemIndex + 1}`, mediaType));
       }
       tracks.push({ index, items });
     }
     return tracks;
   }
 
-  async function readTrackItem(item, label) {
+  async function readTrackItem(item, label, mediaType) {
     if (!item || typeof item.getStartTime !== "function" || typeof item.getEndTime !== "function"
       || typeof item.getProjectItem !== "function") throw new Error(`${label} 트랙 항목 API가 올바르지 않습니다.`);
     const projectItem = await item.getProjectItem();
     const projectItemId = runtime.clipIdentity(projectItem);
     if (!projectItemId) throw new Error(`${label} 원본 식별자를 읽지 못했습니다.`);
+    if (typeof projectItem?.getInPoint !== "function" || typeof projectItem?.getOutPoint !== "function") {
+      throw new Error(`${label} source in/out API를 읽지 못했습니다.`);
+    }
     const start = readSeconds(await item.getStartTime(), `${label} 시작`);
     const end = readSeconds(await item.getEndTime(), `${label} 종료`);
+    const sourceIn = readSeconds(await runtime.maybePromise(projectItem.getInPoint(mediaType)), `${label} source in`);
+    const sourceOut = readSeconds(await runtime.maybePromise(projectItem.getOutPoint(mediaType)), `${label} source out`);
     if (end <= start) throw new Error(`${label} 트랙 항목 시간이 올바르지 않습니다.`);
+    if (sourceOut <= sourceIn) throw new Error(`${label} source 시간이 올바르지 않습니다.`);
     return {
       projectItemId,
       projectItemName: String(projectItem?.name || ""),
       start,
       end,
+      sourceIn,
+      sourceOut,
     };
   }
 
@@ -86,12 +96,16 @@
     const projectItemId = String(value?.projectItemId || "").trim();
     const start = finiteNonNegative(value?.start, `${label} 시작`);
     const end = finiteNonNegative(value?.end, `${label} 종료`);
-    if (!projectItemId || end <= start) throw new Error(`${label} 트랙 항목 구조가 올바르지 않습니다.`);
+    const sourceIn = finiteNonNegative(value?.sourceIn, `${label} source in`);
+    const sourceOut = finiteNonNegative(value?.sourceOut, `${label} source out`);
+    if (!projectItemId || end <= start || sourceOut <= sourceIn) throw new Error(`${label} 트랙 항목 구조가 올바르지 않습니다.`);
     return Object.freeze({
       projectItemId,
       projectItemName: String(value?.projectItemName || ""),
       start,
       end,
+      sourceIn,
+      sourceOut,
     });
   }
 
@@ -117,6 +131,9 @@
       }
       if (!sameTime(actual.start, cursor) || !sameTime(actual.end, expectedEnd)) {
         throw new Error("생성된 시퀀스의 클립 경계 또는 길이가 예상과 다릅니다.");
+      }
+      if (!sameTime(actual.sourceIn, wanted.sourceIn) || !sameTime(actual.sourceOut, wanted.sourceOut)) {
+        throw new Error("생성된 시퀀스의 source 경계가 예상 유지 구간과 다릅니다.");
       }
       cursor = expectedEnd;
     }
@@ -151,12 +168,17 @@
     return value.map((item, index) => {
       const name = String(item?.name || "").trim();
       const duration = Number(item?.duration);
+      const sourceIn = Number(item?.sourceIn);
+      const sourceOut = Number(item?.sourceOut);
       if (!name || names.has(name)) throw new Error("검증할 생성 서브클립 이름이 올바르지 않습니다.");
       if (!Number.isFinite(duration) || duration <= 0 || duration > 12 * 60 * 60) {
         throw new Error(`검증할 생성 구간 ${index + 1}의 길이가 올바르지 않습니다.`);
       }
+      if (!Number.isFinite(sourceIn) || !Number.isFinite(sourceOut) || sourceIn < 0 || sourceOut <= sourceIn) {
+        throw new Error(`검증할 생성 구간 ${index + 1}의 source 경계가 올바르지 않습니다.`);
+      }
       names.add(name);
-      return Object.freeze({ name, duration });
+      return Object.freeze({ name, duration, sourceIn, sourceOut });
     });
   }
 
@@ -169,8 +191,9 @@
         continue;
       }
       if (existing.projectItemName !== item.projectItemName
-        || !sameTime(existing.start, item.start) || !sameTime(existing.end, item.end)) {
-        throw new Error("같은 생성 서브클립의 A/V 경계가 서로 일치하지 않습니다.");
+        || !sameTime(existing.start, item.start) || !sameTime(existing.end, item.end)
+        || !sameTime(existing.sourceIn, item.sourceIn) || !sameTime(existing.sourceOut, item.sourceOut)) {
+        throw new Error("같은 생성 서브클립의 A/V 경계 또는 source 경계가 서로 일치하지 않습니다.");
       }
     }
     return [...grouped.values()].sort(compareItems);
