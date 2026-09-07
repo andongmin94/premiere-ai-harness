@@ -86,6 +86,14 @@ function makeFixture(inputOptions = {}) {
           getId() { return this.id; },
           getParentBin() { return this.parent; },
         };
+        if (!options.missingSubclipBoundaryApi) {
+          clip.getInPoint = async function (mediaType) {
+            return tick((this.startFrame + boundaryOffset(options, mediaType, "In")) / fps);
+          };
+          clip.getOutPoint = async function (mediaType) {
+            return tick((this.endFrame + boundaryOffset(options, mediaType, "Out")) / fps);
+          };
+        }
         parent.items.push(clip);
       });
     },
@@ -201,7 +209,10 @@ function makeFixture(inputOptions = {}) {
   };
 
   const ppro = {
-    Constants: { TrackItemType: { CLIP: 1 } },
+    Constants: {
+      TrackItemType: { CLIP: 1 },
+      MediaType: { VIDEO: "video", AUDIO: "audio", DATA: "data", ANY: "any" },
+    },
     Project: { async getActiveProject() { return options.noProject ? null : project; } },
     ProjectUtils: {
       async getSelection() {
@@ -221,6 +232,14 @@ function makeFixture(inputOptions = {}) {
   };
 
   return { options, context, ppro, project, source, parent, root, existing };
+}
+
+function boundaryOffset(options, mediaType, side) {
+  const media = mediaType === "audio" ? "Audio" : "Video";
+  const specific = Number(options[`subclip${media}${side}OffsetFrames`]);
+  if (Number.isFinite(specific)) return specific;
+  const generic = Number(options[`subclip${side}OffsetFrames`]);
+  return Number.isFinite(generic) ? generic : 0;
 }
 
 module.exports = { makeFixture, makeFolder };

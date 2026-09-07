@@ -127,6 +127,7 @@
       await assets.createGeneratedBin(resources, ppro, settings);
       await assets.createSubclips(resources.project, context.clip, ranges, resources.subclipNames, frameRateObject, ppro);
       resources.subclips = await assets.waitForNamedClips(resources.parentBin, resources.subclipNames, ppro, settings);
+      await assets.verifySubclipBoundaries(resources.subclips, ranges, ppro, timing.frameRate);
       await assets.moveItems(resources.project, resources.parentBin, resources.runBin, resources.subclips);
       await assets.waitForNamedClips(resources.runBin, resources.subclipNames, ppro, settings);
       failureObserved = true;
@@ -219,6 +220,7 @@
     await assets.createGeneratedBin(resources, ppro, options);
     await assets.createSubclips(resources.project, sourceClip, ranges, resources.subclipNames, frameRateObject, ppro);
     resources.subclips = await assets.waitForNamedClips(resources.parentBin, resources.subclipNames, ppro, options);
+    await assets.verifySubclipBoundaries(resources.subclips, ranges, ppro, options.frameRate);
     await assets.moveItems(resources.project, resources.parentBin, resources.runBin, resources.subclips);
     await assets.waitForNamedClips(resources.runBin, resources.subclipNames, ppro, options);
     resources.sequence = await assets.createAndActivateSequence(resources, resources.subclips, resources.runBin);

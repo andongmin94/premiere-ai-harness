@@ -16,6 +16,7 @@ Premiere UXP panel
        ├─ selected source verification
        ├─ frame-safe keep ranges
        ├─ hard-boundary subclips
+       ├─ subclip source in/out verification
        ├─ isolated output bin
        ├─ new sequence creation
        ├─ sequence structure snapshot
@@ -56,7 +57,7 @@ sequence-snapshot.js
   시퀀스 종료 시간·트랙·클립·경계의 정규화된 구조 기록
 
 generated-assets.js
-  빈·서브클립·시퀀스 생성
+  빈·서브클립 생성, VIDEO·AUDIO source in/out 프레임 검증, 시퀀스 생성
 
 generated-cleanup.js
   부분 실패 rollback과 내부 시험 자산 정리
@@ -78,6 +79,7 @@ editor-flow.js / ui-view.js
 현재 Premiere 프로젝트·클립 ID·길이·프레임레이트 재검증
 → 내부 전용 빈 생성
 → hard-boundary subclip 생성
+→ 생성 subclip의 VIDEO·AUDIO source in/out을 요청 start/end 프레임과 대조
 → 내부 시험 시퀀스 생성
 → 트랙·클립·경계 확인
 → 시험 시퀀스 삭제
@@ -87,6 +89,8 @@ editor-flow.js / ui-view.js
 ```
 
 원본 검증은 첫 mutation 전에 끝나야 하며, 검사 이후 프로젝트 패널 선택이 바뀌었거나 기대한 식별자를 호스트에서 더 이상 읽지 못하면 자체시험을 시작하지 않습니다. PASS 결과에는 실제 시험한 프로젝트 ID·클립 ID·길이·프레임레이트를 포함하고, qualification 기록에 반영할 때 저장된 검증 대상과 다시 대조합니다.
+
+서브클립 생성 직후에는 `ClipProjectItem.getInPoint/getOutPoint`를 VIDEO와 AUDIO 각각 호출하고 `TickTime.seconds × frameRate`를 생성 요청의 `startFrame/endFrame`과 대조합니다. 경계 API를 읽지 못하거나 한쪽 미디어라도 요청 프레임과 다르면 이동이나 시퀀스 생성 전에 실패하고 이번 작업의 서브클립·빈을 정리합니다. 이 검증은 시퀀스에 배치된 TrackItem의 시간 구조를 확인하는 `sequence-snapshot.js` 검증과 별개입니다.
 
 의도된 실패 롤백 시험은 같은 원본의 호스트 자체시험 PASS 뒤에만 실행합니다. 모든 단계와 정리가 통과한 경우에만 해당 검증 단계를 PASS로 기록합니다.
 
@@ -133,9 +137,10 @@ Qualification이 활성화된 동안 붙여넣은 SRT·WebVTT·JSON 편집안은
 7. Qualification 러프컷은 기록된 Premiere 전사문 fingerprint와 현재 편집안 fingerprint가 동일한 경우에만 mutation을 허용합니다.
 8. 기대한 프로젝트·클립 식별자를 호스트에서 읽지 못하는 경우도 stale-state 오류로 차단합니다.
 9. 유지 구간은 원본 프레임 안쪽으로 정렬하며 사라지는 구간은 오류로 차단합니다.
-10. 성공 출력은 `PAI_OUTPUT_` 전용 빈에 격리합니다.
-11. 내부 시험 자산은 엄격한 `PAI_INTERNAL_*` 형식만 사용합니다.
-12. 실패 시 이번 작업에서 생성한 ID 기준 자산만 정리하고, 이름만 같은 기존 자산은 건드리지 않습니다.
-13. 정리 실패를 숨기지 않습니다.
-14. 기존 시퀀스와 원본 미디어는 수정하지 않습니다.
-15. 사용자가 생성 빈에 넣은 항목이 발견되면 보존하고 정리 실패를 보고합니다.
+10. 생성된 서브클립의 VIDEO·AUDIO source in/out이 요청한 원본 프레임과 일치해야만 이동과 시퀀스 생성을 계속합니다.
+11. 성공 출력은 `PAI_OUTPUT_` 전용 빈에 격리합니다.
+12. 내부 시험 자산은 엄격한 `PAI_INTERNAL_*` 형식만 사용합니다.
+13. 실패 시 이번 작업에서 생성한 ID 기준 자산만 정리하고, 이름만 같은 기존 자산은 건드리지 않습니다.
+14. 정리 실패를 숨기지 않습니다.
+15. 기존 시퀀스와 원본 미디어는 수정하지 않습니다.
+16. 사용자가 생성 빈에 넣은 항목이 발견되면 보존하고 정리 실패를 보고합니다.

@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "host": "premierepro",
   "version": "26.3.0",
-  "reviewedAt": "2026-08-23",
+  "reviewedAt": "2026-09-07",
   "source": "Adobe Premiere Pro UXP public API reference and official sample repository",
   "sourceReferences": [
     "https://developer.adobe.com/premiere-pro/uxp/ppro-reference/",
@@ -13,6 +13,7 @@
     "https://developer.adobe.com/premiere-pro/uxp/ppro-reference/classes/clipprojectitem/",
     "https://developer.adobe.com/premiere-pro/uxp/ppro-reference/classes/folderitem/",
     "https://developer.adobe.com/premiere-pro/uxp/ppro-reference/classes/transcript/",
+    "https://developer.adobe.com/premiere-pro/uxp/ppro-reference/constants/",
     "https://github.com/AdobeDocs/uxp-premiere-pro-samples"
   ],
   "required": [
@@ -26,6 +27,8 @@
     "ClipProjectItem.getMedia",
     "ClipProjectItem.getFootageInterpretation",
     "ClipProjectItem.createSubClipAction",
+    "ClipProjectItem.getInPoint",
+    "ClipProjectItem.getOutPoint",
     "ClipProjectItem.getParentBin",
     "FolderItem.createBinAction",
     "FolderItem.getItems",
@@ -52,6 +55,8 @@
     "TrackItem.getEndTime",
     "TrackItem.getProjectItem",
     "Constants.TrackItemType.CLIP",
+    "Constants.MediaType.VIDEO",
+    "Constants.MediaType.AUDIO",
     "TickTime.createWithFrameAndFrameRate",
     "FrameRate.createWithValue",
     "CompoundAction.addAction",
