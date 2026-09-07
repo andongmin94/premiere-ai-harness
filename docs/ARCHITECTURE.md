@@ -14,9 +14,10 @@ Premiere UXP panel
   ├─ review UI
   └─ Premiere adapter
        ├─ selected source verification
+       ├─ source media/state snapshot
        ├─ frame-safe keep ranges
        ├─ hard-boundary subclips
-       ├─ subclip source in/out verification
+       ├─ subclip media identity + source in/out verification
        ├─ isolated output bin
        ├─ new sequence creation
        ├─ sequence structure snapshot
@@ -57,7 +58,7 @@ sequence-snapshot.js
   시퀀스 종료 시간·트랙·클립·경계의 정규화된 구조 기록
 
 generated-assets.js
-  빈·서브클립 생성, VIDEO·AUDIO source in/out 프레임 검증, 시퀀스 생성
+  원본 media/state snapshot, 빈·서브클립 생성, media identity·VIDEO/AUDIO source in/out 검증, 시퀀스 생성
 
 generated-cleanup.js
   부분 실패 rollback과 내부 시험 자산 정리
@@ -73,12 +74,15 @@ editor-flow.js / ui-view.js
 
 ## 호스트 자체시험
 
-사용자가 검사한 일반 원본 클립의 짧은 프레임 구간으로 다음을 수행합니다.
+사용자가 검사한 파일 기반 일반 원본 클립의 짧은 프레임 구간으로 다음을 수행합니다.
 
 ```text
 현재 Premiere 프로젝트·클립 ID·길이·프레임레이트 재검증
+→ 원본 media path와 VIDEO·AUDIO in/out 상태 snapshot
 → 내부 전용 빈 생성
 → hard-boundary subclip 생성
+→ 원본 media path와 VIDEO·AUDIO in/out 상태가 변하지 않았는지 재확인
+→ 생성 subclip media path가 원본 media path와 같은지 확인
 → 생성 subclip의 VIDEO·AUDIO source in/out을 요청 start/end 프레임과 대조
 → 내부 시험 시퀀스 생성
 → 트랙·클립·경계 확인
@@ -88,9 +92,9 @@ editor-flow.js / ui-view.js
 → 잔여물이 없는지 재확인
 ```
 
-원본 검증은 첫 mutation 전에 끝나야 하며, 검사 이후 프로젝트 패널 선택이 바뀌었거나 기대한 식별자를 호스트에서 더 이상 읽지 못하면 자체시험을 시작하지 않습니다. PASS 결과에는 실제 시험한 프로젝트 ID·클립 ID·길이·프레임레이트를 포함하고, qualification 기록에 반영할 때 저장된 검증 대상과 다시 대조합니다.
+원본 검증은 첫 mutation 전에 끝나야 하며, 검사 이후 프로젝트 패널 선택이 바뀌었거나 기대한 식별자를 호스트에서 더 이상 읽지 못하면 자체시험을 시작하지 않습니다. Media file path 또는 source in/out API를 확인할 수 없는 원본도 선택 검사에서 차단합니다. PASS 결과에는 실제 시험한 프로젝트 ID·클립 ID·길이·프레임레이트를 포함하고, qualification 기록에 반영할 때 저장된 검증 대상과 다시 대조합니다.
 
-서브클립 생성 직후에는 `ClipProjectItem.getInPoint/getOutPoint`를 VIDEO와 AUDIO 각각 호출하고 `TickTime.seconds × frameRate`를 생성 요청의 `startFrame/endFrame`과 대조합니다. 경계 API를 읽지 못하거나 한쪽 미디어라도 요청 프레임과 다르면 이동이나 시퀀스 생성 전에 실패하고 이번 작업의 서브클립·빈을 정리합니다. 이 검증은 시퀀스에 배치된 TrackItem의 시간 구조를 확인하는 `sequence-snapshot.js` 검증과 별개입니다.
+서브클립 생성 직후에는 `ClipProjectItem.getMediaFilePath()`가 원본과 같은지 비교하고, 원본 project item 자체의 VIDEO·AUDIO in/out이 생성 전 snapshot과 동일한지도 확인합니다. 이어 `ClipProjectItem.getInPoint/getOutPoint`를 VIDEO와 AUDIO 각각 호출하고 `TickTime.seconds × frameRate`를 생성 요청의 `startFrame/endFrame`과 대조합니다. 어느 검증이든 실패하면 이동이나 시퀀스 생성 전에 이번 작업의 서브클립·빈을 정리합니다. Media path 문자열은 비교에만 사용하며 qualification 또는 프로젝트 외 기록에 저장하지 않습니다. 이 검증은 시퀀스에 배치된 TrackItem의 시간 구조를 확인하는 `sequence-snapshot.js` 검증과 별개입니다.
 
 의도된 실패 롤백 시험은 같은 원본의 호스트 자체시험 PASS 뒤에만 실행합니다. 모든 단계와 정리가 통과한 경우에만 해당 검증 단계를 PASS로 기록합니다.
 
@@ -128,19 +132,20 @@ Qualification이 활성화된 동안 붙여넣은 SRT·WebVTT·JSON 편집안은
 
 ## 안전 원칙
 
-1. 프로젝트 패널에서 원본 클립 하나만 허용합니다.
+1. 프로젝트 패널에서 파일 경로를 확인할 수 있는 일반 원본 클립 하나만 허용합니다.
 2. 오프라인·중첩·병합·멀티캠 원본은 mutation 전에 차단합니다.
 3. 삭제 후보는 자동 적용하지 않고 사용자가 검토합니다.
 4. 자동 선택 삭제량은 프리셋 상한 안에서만 선택합니다.
 5. 실제 적용 전 동일 호스트 조합의 자체시험 PASS를 요구합니다.
 6. 실제 편집과 자체시험 mutation 직전에 프로젝트·클립 ID·길이·프레임레이트를 재검증하며, Premiere 전사문을 사용한 편집은 전사문도 재검증합니다.
 7. Qualification 러프컷은 기록된 Premiere 전사문 fingerprint와 현재 편집안 fingerprint가 동일한 경우에만 mutation을 허용합니다.
-8. 기대한 프로젝트·클립 식별자를 호스트에서 읽지 못하는 경우도 stale-state 오류로 차단합니다.
+8. 기대한 프로젝트·클립 식별자 또는 source identity API를 호스트에서 읽지 못하는 경우도 fail-closed로 차단합니다.
 9. 유지 구간은 원본 프레임 안쪽으로 정렬하며 사라지는 구간은 오류로 차단합니다.
-10. 생성된 서브클립의 VIDEO·AUDIO source in/out이 요청한 원본 프레임과 일치해야만 이동과 시퀀스 생성을 계속합니다.
-11. 성공 출력은 `PAI_OUTPUT_` 전용 빈에 격리합니다.
-12. 내부 시험 자산은 엄격한 `PAI_INTERNAL_*` 형식만 사용합니다.
-13. 실패 시 이번 작업에서 생성한 ID 기준 자산만 정리하고, 이름만 같은 기존 자산은 건드리지 않습니다.
-14. 정리 실패를 숨기지 않습니다.
-15. 기존 시퀀스와 원본 미디어는 수정하지 않습니다.
-16. 사용자가 생성 빈에 넣은 항목이 발견되면 보존하고 정리 실패를 보고합니다.
+10. 서브클립 생성 전후 원본 media path와 VIDEO·AUDIO in/out 상태가 동일해야 합니다.
+11. 생성된 서브클립은 원본과 같은 media path를 가리켜야 하며 VIDEO·AUDIO source in/out도 요청한 원본 프레임과 일치해야 합니다.
+12. 성공 출력은 `PAI_OUTPUT_` 전용 빈에 격리합니다.
+13. 내부 시험 자산은 엄격한 `PAI_INTERNAL_*` 형식만 사용합니다.
+14. 실패 시 이번 작업에서 생성한 ID 기준 자산만 정리하고, 이름만 같은 기존 자산은 건드리지 않습니다.
+15. 정리 실패를 숨기지 않습니다.
+16. 기존 시퀀스와 원본 미디어는 수정하지 않습니다.
+17. 사용자가 생성 빈에 넣은 항목이 발견되면 보존하고 정리 실패를 보고합니다.
