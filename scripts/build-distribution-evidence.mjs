@@ -119,7 +119,7 @@ function normalizeEvent(name, value, baseDirectory, version) {
     assert(value.version === version && value.panelVisible === true, "install verification is incomplete");
   } else if (name === "update") {
     assertSemver(value.fromVersion, "update fromVersion");
-    assert(value.fromVersion !== version && value.toVersion === version, "update version path is invalid");
+    assert(compareVersions(value.fromVersion, version) < 0 && value.toVersion === version, "update version path is invalid");
     assert(value.samePluginId === true && value.panelVisible === true, "update verification is incomplete");
   } else {
     assert(value.version === version && value.panelAbsent === true, "removal verification is incomplete");
@@ -182,7 +182,7 @@ function validateStoredEvent(name, value, version) {
   if (name === "install") assert(value.version === version && value.panelVisible === true, "stored install event is incomplete");
   if (name === "update") {
     assertSemver(value.fromVersion, "stored update fromVersion");
-    assert(value.toVersion === version && value.fromVersion !== version && value.samePluginId === true && value.panelVisible === true, "stored update event is incomplete");
+    assert(compareVersions(value.fromVersion, version) < 0 && value.toVersion === version && value.samePluginId === true && value.panelVisible === true, "stored update event is incomplete");
   }
   if (name === "removal") assert(value.version === version && value.panelAbsent === true && value.pluginOwnedResidualDataFound === false, "stored removal event is incomplete");
 }
@@ -200,6 +200,15 @@ function validTimestamp(value, label) { const text = requiredText(value, label);
 function assertText(value, label) { requiredText(value, label); }
 function assertHex(value, length, label) { assert(new RegExp(`^[0-9a-f]{${length}}$`).test(String(value || "").toLowerCase()), `invalid ${label}`); }
 function assertSemver(value, label) { assert(/^\d+\.\d+\.\d+$/.test(String(value || "")), `invalid ${label}`); }
+function compareVersions(left, right) {
+  const first = String(left).split(".").map(Number);
+  const second = String(right).split(".").map(Number);
+  for (let index = 0; index < 3; index += 1) {
+    const delta = first[index] - second[index];
+    if (delta) return delta;
+  }
+  return 0;
+}
 function normalizeRelative(value) { return String(value).replace(/\\/g, "/"); }
 function isContainedRelative(value) {
   const normalized = normalizeRelative(value);
