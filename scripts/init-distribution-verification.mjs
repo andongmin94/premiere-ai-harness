@@ -85,10 +85,24 @@ function prepareEmptyDirectory(directory) {
 }
 
 function assertOutsideRepository(directory) {
-  const relative = path.relative(root, directory);
-  if (relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))) {
-    throw new Error("distribution verification workspace must be outside the repository");
+  if (isInside(root, directory)) throw new Error("distribution verification workspace must be outside the repository");
+  let existing = directory;
+  while (!fs.existsSync(existing)) {
+    const parent = path.dirname(existing);
+    if (parent === existing) break;
+    existing = parent;
   }
+  const existingReal = fs.realpathSync(existing);
+  const repositoryReal = fs.realpathSync(root);
+  const projectedReal = path.resolve(existingReal, path.relative(existing, directory));
+  if (isInside(repositoryReal, projectedReal)) {
+    throw new Error("distribution verification workspace resolves inside the repository");
+  }
+}
+
+function isInside(parent, child) {
+  const relative = path.relative(parent, child);
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
 }
 
 function instructionsText(version, previousVersion) {
