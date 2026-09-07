@@ -118,11 +118,11 @@ function makeFixture(inputOptions = {}) {
   }
   parent.items.push(source);
 
-  function makeTrackItem(projectItem, start, end) {
+  function makeTrackItem(projectItem, start, end, kind) {
     return {
       projectItem,
-      trackSourceIn: 0,
-      trackSourceOut: Math.max(0, end - start),
+      trackSourceIn: trackOffset(options, kind, "In") / fps,
+      trackSourceOut: Math.max(0, end - start) + trackOffset(options, kind, "Out") / fps,
       async getStartTime() { return tick(start); },
       async getEndTime() { return tick(end); },
       async getInPoint() { return tick(this.trackSourceIn); },
@@ -152,8 +152,8 @@ function makeFixture(inputOptions = {}) {
         cursor += length;
       }
     }
-    const videoItems = options.omitVideo ? [] : placements.map((item) => makeTrackItem(item.clip, item.start, item.end));
-    const audioItems = options.omitAudio ? [] : placements.map((item) => makeTrackItem(item.clip, item.start, item.end));
+    const videoItems = options.omitVideo ? [] : placements.map((item) => makeTrackItem(item.clip, item.start, item.end, "video"));
+    const audioItems = options.omitAudio ? [] : placements.map((item) => makeTrackItem(item.clip, item.start, item.end, "audio"));
     const sequence = {
       guid,
       name,
@@ -262,6 +262,14 @@ function boundaryOffset(options, mediaType, side) {
   const specific = Number(options[`subclip${media}${side}OffsetFrames`]);
   if (Number.isFinite(specific)) return specific;
   const generic = Number(options[`subclip${side}OffsetFrames`]);
+  return Number.isFinite(generic) ? generic : 0;
+}
+
+function trackOffset(options, kind, side) {
+  const media = kind === "audio" ? "Audio" : "Video";
+  const specific = Number(options[`initialTrack${media}${side}OffsetFrames`]);
+  if (Number.isFinite(specific)) return specific;
+  const generic = Number(options[`initialTrack${side}OffsetFrames`]);
   return Number.isFinite(generic) ? generic : 0;
 }
 
