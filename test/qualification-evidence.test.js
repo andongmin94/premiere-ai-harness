@@ -153,6 +153,23 @@ test("rejects source, version, and transcript provenance mismatches", async () =
   });
 });
 
+test("rejects snapshot v1 and source-boundary drift in external qualification reports", async () => {
+  const api = await import("../scripts/build-qualification-evidence.mjs");
+  await withFixture(async (files) => {
+    const legacy = qualificationReport();
+    legacy.steps.roughCut.createdSnapshot.formatVersion = 1;
+    writeJson(files.directory, "qualification.json", legacy);
+    assert.throws(() => api.buildQualificationEvidence(files), /snapshot v2/);
+
+    const drifted = qualificationReport();
+    for (const group of [drifted.steps.roughCut.persistenceSnapshot.videoTracks, drifted.steps.roughCut.persistenceSnapshot.audioTracks]) {
+      group[0].items[0].sourceIn = 0.04;
+    }
+    writeJson(files.directory, "qualification.json", drifted);
+    assert.throws(() => api.buildQualificationEvidence(files), /source-aware snapshots differ/);
+  });
+});
+
 test("detects evidence tampering and never upgrades qualification evidence into release readiness", async () => {
   const api = await import("../scripts/build-qualification-evidence.mjs");
   await withFixture(async (files) => {
