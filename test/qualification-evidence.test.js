@@ -13,9 +13,9 @@ function writeJson(directory, name, value) {
 }
 
 function snapshot() {
-  const item = { projectItemId: "subclip-1", projectItemName: "clip-1", start: 0, end: 1 };
+  const item = { projectItemId: "subclip-1", projectItemName: "clip-1", start: 0, end: 1, sourceIn: 0, sourceOut: 1 };
   return {
-    formatVersion: 1,
+    formatVersion: 2,
     end: 1,
     videoTracks: [{ index: 0, items: [item] }],
     audioTracks: [{ index: 0, items: [item] }],
