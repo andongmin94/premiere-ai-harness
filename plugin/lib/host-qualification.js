@@ -33,6 +33,7 @@
       || !["subclip", "sequence", "activation", "cleanup"].every((name) => checks[name] === true)) {
       throw new Error("정리까지 완료된 호스트 자체시험 PASS 결과가 필요합니다.");
     }
+    requireSameSourceResult(selection, result);
     return records.updateQualificationStep(storage, environment, selection, "hostSelfTest", {
       status: "PASS",
       completedAt,
@@ -41,10 +42,15 @@
   }
 
   function recordRollbackSelfTest(storage, environment, selection, result, completedAt) {
+    const current = records.requireQualificationRecord(storage, environment, selection);
+    if (current.steps.hostSelfTest.status !== "PASS") {
+      throw new Error("현재 원본의 호스트 자체시험을 먼저 통과하십시오.");
+    }
     if (result?.status !== "PASS" || result?.cleaned !== true
       || result?.checks?.failureObserved !== true || result?.checks?.cleanup !== true) {
       throw new Error("의도된 실패와 정리를 모두 확인한 롤백 자체시험 PASS 결과가 필요합니다.");
     }
+    requireSameSourceResult(selection, result);
     return records.updateQualificationStep(storage, environment, selection, "rollbackSelfTest", {
       status: "PASS",
       completedAt,
@@ -158,6 +164,19 @@
 
   function qualificationReport(record) {
     return record ? `${JSON.stringify(record, null, 2)}\n` : "";
+  }
+
+  function requireSameSourceResult(selection, result) {
+    if (String(result?.projectId || "") !== String(selection?.projectId || "")) {
+      throw new Error("자체시험을 실행한 Premiere 프로젝트가 검증 대상과 다릅니다.");
+    }
+    if (String(result?.clipId || "") !== String(selection?.clipId || "")) {
+      throw new Error("자체시험을 실행한 원본 클립이 검증 대상과 다릅니다.");
+    }
+    if (Math.abs(Number(result?.duration) - Number(selection?.duration)) > 0.002
+      || Math.abs(Number(result?.frameRate) - Number(selection?.frameRate)) > 0.0001) {
+      throw new Error("자체시험을 실행한 원본의 길이 또는 프레임레이트가 검증 대상과 다릅니다.");
+    }
   }
 
   function requireSameRoughCut(expected, actual) {
