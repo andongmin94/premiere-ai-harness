@@ -16,10 +16,10 @@
 - [ ] CCX CRC와 source directory 파일별 바이트 일치
 - [ ] source manifest와 CCX manifest가 대상 커밋·SHA-256 기록과 일치
 
-## 실제 Adobe 호스트·설치 게이트
+## 실제 Premiere qualification 게이트
 
 - [ ] 보관한 대상 커밋과 CCX SHA-256 기록 확인
-- [ ] CCX 더블클릭 후 Creative Cloud Desktop 설치 성공
+- [ ] exact CCX를 Creative Cloud Desktop으로 설치 성공
 - [ ] Premiere Pro 26.3+에서 패널 표시
 - [ ] 일반 원본 클립의 `호스트 자체시험` PASS
 - [ ] `실패 롤백 자체시험` PASS와 내부 자산 0개
@@ -34,10 +34,27 @@
 - [ ] `npm run evidence:qualification -- /path/to/qualification.json` 성공
 - [ ] qualification evidence의 source tree SHA-256·Git commit·CCX SHA-256·host qualification PASS 결합 확인
 - [ ] qualification evidence의 `releaseReady`가 `false`인지 확인
-- [ ] 같은 ID의 후속 버전 업데이트 설치
-- [ ] Creative Cloud Desktop 제거 후 패널 미노출 확인
-- [ ] 프로젝트 결과물 외 플러그인 전용 잔여 데이터 확인
 
-Qualification evidence는 source/CCX/실제 Premiere 검증을 하나의 기계 판독 기록으로 묶지만 Creative Cloud 설치·업데이트·제거를 자동 증명하지 않습니다. 따라서 evidence 생성 성공만으로 Public Beta, Stable, GA 또는 판매판으로 표시하지 않습니다.
+## Creative Cloud 배포 게이트
+
+- [ ] 현재 후보 exact CCX 설치 성공 증거 파일 보관
+- [ ] 동일 plugin ID의 이전 시험 버전에서 현재 Core 0.5.1 후보로 업데이트 설치 성공
+- [ ] 업데이트 뒤 Premiere 패널 정상 표시 증거 파일 보관
+- [ ] Creative Cloud Desktop에서 현재 Core 0.5.1 후보 제거 성공
+- [ ] 제거 뒤 Premiere에서 패널 미노출 확인
+- [ ] 프로젝트 결과물 외 플러그인 전용 잔여 데이터가 없음을 확인
+- [ ] 설치·업데이트·제거 각각 최소 1개의 증거 파일 보관
+- [ ] `docs/DISTRIBUTION_EVIDENCE_KO.md` 형식으로 `distribution-verification.json` 작성
+- [ ] `distribution-verification.json`의 `sourceCommit`과 `ccxSha256`이 qualification evidence와 일치
+- [ ] `npm run evidence:distribution -- <qualification-evidence> <distribution-verification.json> <exact.ccx>` 성공
+- [ ] final distribution evidence의 actual CCX SHA-256이 qualification evidence와 일치
+- [ ] 설치·업데이트·제거 증거 파일의 SHA-256이 final distribution evidence에 기록됨
+- [ ] final distribution evidence의 `adobeAttestation`이 `false`인지 확인
+- [ ] final distribution evidence의 `releaseReady`가 `true`인지 확인
+- [ ] final distribution evidence와 원본 증거 파일을 exact CCX와 함께 저장소 밖에 보관
+
+Qualification evidence는 source/CCX/실제 Premiere 검증을 묶고 항상 `releaseReady: false`입니다. Final distribution evidence는 actual CCX와 판매자가 직접 수행한 Creative Cloud 설치·업데이트·제거 증거까지 모두 일치한 경우에만 `releaseReady: true`가 됩니다.
+
+`releaseReady: true`는 이 저장소가 정의한 판매자 검증 게이트의 완료를 뜻하며 Adobe가 evidence를 서명하거나 원격 attestation했다는 뜻은 아닙니다.
 
 전 항목 통과 전에는 판매하거나 Public Beta, Stable, GA로 표시하지 않습니다.
