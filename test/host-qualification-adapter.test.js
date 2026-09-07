@@ -36,6 +36,24 @@ test("host and rollback self-tests reject a stale source before any mutation", a
   }
 });
 
+test("self-tests fail closed when an expected host identity disappears", async () => {
+  const missingClip = makeFixture();
+  missingClip.source.id = "";
+  await assert.rejects(
+    () => adapter.runHostSelfTest(missingClip.ppro, { ...fast, expectedSource: expectedSource() }),
+    /원본 클립이 바뀌었습니다/
+  );
+  assert.equal(missingClip.project.transactions.length, 0);
+
+  const missingProject = makeFixture();
+  missingProject.project.guid = "";
+  await assert.rejects(
+    () => adapter.runRollbackSelfTest(missingProject.ppro, { ...fast, expectedSource: expectedSource() }),
+    /프로젝트가 바뀌었습니다/
+  );
+  assert.equal(missingProject.project.transactions.length, 0);
+});
+
 test("rollback self-test refuses PASS when a foreign item prevents complete cleanup", async () => {
   const fixture = makeFixture({ foreignInGeneratedBin: true });
   await assert.rejects(() => adapter.runRollbackSelfTest(fixture.ppro, fast), /정리에도 실패/);
