@@ -110,7 +110,12 @@
       return Object.freeze({ status: "PASS", completedAt: normalizeTimestamp(value.completedAt), operationId: optionalText(value.operationId) });
     }
     if (name === "premiereTranscript") {
-      return Object.freeze({ status: "PASS", completedAt: normalizeTimestamp(value.completedAt), segmentCount: positiveInteger(value.segmentCount, "전사 구간 수") });
+      return Object.freeze({
+        status: "PASS",
+        completedAt: normalizeTimestamp(value.completedAt),
+        segmentCount: positiveInteger(value.segmentCount, "전사 구간 수"),
+        fingerprint: transcriptFingerprint(value.fingerprint),
+      });
     }
     if (name === "roughCut") return normalizeRoughCutStep(value);
     if (name === "playback") {
@@ -136,6 +141,7 @@
       operationId: requiredText(value.operationId, "작업 식별자"),
       segmentCount: positiveInteger(value.segmentCount, "러프컷 구간 수"),
       createdSessionId: normalizeSessionId(value.createdSessionId),
+      transcriptFingerprint: transcriptFingerprint(value.transcriptFingerprint),
       createdSnapshot: snapshots.normalizeSequenceSnapshot(value.createdSnapshot),
     };
     if (value.persistenceSnapshot != null) {
@@ -180,6 +186,12 @@
     const number = Number(value);
     if (!Number.isInteger(number) || number <= 0) throw new Error(`${label}가 올바르지 않습니다.`);
     return number;
+  }
+
+  function transcriptFingerprint(value) {
+    const text = String(value == null ? "" : value).trim();
+    if (!/^tx1-\d+-[0-9a-f]{16}$/.test(text)) throw new Error("Premiere 전사문 fingerprint가 올바르지 않습니다.");
+    return text;
   }
 
   function requiredText(value, label) {
