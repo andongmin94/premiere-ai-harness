@@ -9,6 +9,7 @@
 로컬 검증 범위:
 
 - 패널 DOM, UXP entrypoint, Premiere Pro 26.3 API 계약
+- 파일 경로와 source in/out API를 확인할 수 있는 일반 원본 클립만 지원
 - SRT·WebVTT·Adobe 중첩 JSON 전사문 파서
 - 전사문 raw 입력·JSON 배열 폭·JSON 탐색량·segment/전체 텍스트량을 상한으로 제한하고 과대 입력 fail-closed
 - Adobe segment에 완성된 text가 있으면 중첩 words 배열을 불필요하게 순회·재조합하지 않음
@@ -21,8 +22,11 @@
 - 붙여넣은 전사문 또는 변경된 Premiere 전사문으로 qualification 러프컷을 우회하는 경로 차단
 - 저장된 qualification 단계 간 transcript·roughCut·playback·persistence 불변조건 재검증
 - 프레임 안쪽 정렬과 사라지는 유지 구간 차단
-- 생성된 각 서브클립의 VIDEO·AUDIO source in/out을 다시 읽어 요청한 원본 start/end 프레임과 독립 대조
-- source in/out 불일치 또는 boundary API 부재 시 시퀀스 생성 전 fail-closed 및 생성 자산 롤백
+- 첫 mutation 전에 원본 media path와 VIDEO·AUDIO in/out 상태 snapshot
+- 서브클립 생성 후 원본 media path·VIDEO/AUDIO in/out 불변성 재검증
+- 생성된 각 서브클립의 media path가 원본과 동일한지 독립 대조
+- 생성된 각 서브클립의 VIDEO·AUDIO source in/out을 요청한 원본 start/end 프레임과 독립 대조
+- source identity/in-out 불일치 또는 검증 API 부재 시 시퀀스 생성 전 fail-closed 및 생성 자산 롤백
 - 생성 시퀀스의 종료 시간·트랙·클립 순서·A/V 경계 검증
 - 부분 mutation 뒤 이번 작업의 시퀀스·빈·서브클립 롤백
 - 동일 이름의 기존 사용자 시퀀스 보존
@@ -56,7 +60,7 @@ Creative Cloud Desktop에서 exact CCX 설치, 동일 plugin ID의 이전 시험
 
 - Creative Cloud Desktop에서 exact CCX 설치
 - Premiere Pro 26.3+ 패널 로드
-- 실제 클립의 호스트·롤백 자체시험에서 VIDEO·AUDIO source in/out 프레임 대조 PASS
+- 실제 파일 기반 클립의 호스트·롤백 자체시험에서 원본 media path/in-out 불변성과 subclip media identity·VIDEO/AUDIO source in/out 대조 PASS
 - 실제 Premiere transcript export와 fingerprint 결합 확인
 - 서브클립 프레임 경계와 A/V sync 직접 재생 확인
 - 원본 시퀀스와 원본 미디어 불변
