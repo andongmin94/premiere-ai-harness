@@ -42,8 +42,9 @@
 
     async function runRollbackSelfTest() {
       requireActiveQualification();
-      const result = await PAI.runRollbackSelfTest(getPpro());
-      record = PAI.recordRollbackSelfTest(storage, requireEnvironment(), requireSelection(), result);
+      const selection = requireSelection();
+      const result = await PAI.runRollbackSelfTest(getPpro(), { expectedSource: selection });
+      record = PAI.recordRollbackSelfTest(storage, requireEnvironment(), selection, result);
       render();
       return result;
     }
@@ -105,7 +106,7 @@
       return {
         hasQualification: Boolean(record),
         canStartQualification: Boolean(environment && selection),
-        canRunRollback: matching,
+        canRunRollback: Boolean(matching && record.steps.hostSelfTest.status === "PASS"),
         canConfirmPlayback: Boolean(matching
           && record.steps.roughCut.status === "PASS"
           && record.steps.playback.status !== "PASS"),
