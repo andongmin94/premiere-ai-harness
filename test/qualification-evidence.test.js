@@ -130,7 +130,9 @@ test("builds linked evidence without claiming release readiness", async () => {
     assert.equal(evidence.qualification.transcriptFingerprint, "tx1-1-0123456789abcdef");
     assert.equal(evidence.source.treeSha256, "1".repeat(64));
     assert.equal(evidence.ccx.sha256, "2".repeat(64));
-    assert.deepEqual(api.verifyQualificationEvidence(JSON.parse(fs.readFileSync(files.outputFile, "utf8"))), JSON.parse(fs.readFileSync(files.outputFile, "utf8")));
+    assert.match(evidence.remainingReleaseGate, /install, update, and removal/);
+    const stored = JSON.parse(fs.readFileSync(files.outputFile, "utf8"));
+    assert.deepEqual(api.verifyQualificationEvidence(stored), stored);
   });
 });
 
@@ -138,25 +140,25 @@ test("rejects source, version, and transcript provenance mismatches", async () =
   const api = await import("../scripts/build-qualification-evidence.mjs");
   await withFixture(async (files) => {
     writeJson(files.directory, "ccx.manifest.json", ccxManifest({ sourceTreeSha256: "3".repeat(64) }));
-    await assert.rejects(async () => api.buildQualificationEvidence(files), /source tree differs/);
+    assert.throws(() => api.buildQualificationEvidence(files), /source tree differs/);
 
     writeJson(files.directory, "ccx.manifest.json", ccxManifest());
     writeJson(files.directory, "qualification.json", qualificationReport({ productVersion: "0.5.2" }));
-    await assert.rejects(async () => api.buildQualificationEvidence(files), /product version differs/);
+    assert.throws(() => api.buildQualificationEvidence(files), /product version differs/);
 
     const broken = qualificationReport();
     broken.steps.roughCut.transcriptFingerprint = "tx1-1-fedcba9876543210";
     writeJson(files.directory, "qualification.json", broken);
-    await assert.rejects(async () => api.buildQualificationEvidence(files), /provenance mismatch/);
+    assert.throws(() => api.buildQualificationEvidence(files), /provenance mismatch/);
   });
 });
 
-test("detects evidence tampering and derives releaseReady from distribution gates", async () => {
+test("detects evidence tampering and never upgrades qualification evidence into release readiness", async () => {
   const api = await import("../scripts/build-qualification-evidence.mjs");
   await withFixture(async (files) => {
     writeJson(files.directory, "ccx.manifest.json", ccxManifest({ installVerified: true, distributionReady: true }));
     const evidence = api.buildQualificationEvidence(files);
-    assert.equal(evidence.releaseReady, true);
+    assert.equal(evidence.releaseReady, false);
     const tampered = JSON.parse(fs.readFileSync(files.outputFile, "utf8"));
     tampered.ccx.bytes += 1;
     assert.throws(() => api.verifyQualificationEvidence(tampered), /evidence SHA-256 does not match/);
