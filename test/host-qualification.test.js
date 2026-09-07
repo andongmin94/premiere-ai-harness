@@ -31,6 +31,32 @@ function makeStorage() {
   };
 }
 
+function sourceEvidence(overrides = {}) {
+  return { projectId: "project-1", clipId: "clip-1", duration: 10, frameRate: 25, ...overrides };
+}
+
+function hostSelfTestResult(overrides = {}) {
+  return {
+    status: "PASS",
+    cleaned: true,
+    operationId: "self-test",
+    ...sourceEvidence(),
+    checks: { subclip: true, sequence: true, activation: true, cleanup: true },
+    ...overrides,
+  };
+}
+
+function rollbackSelfTestResult(overrides = {}) {
+  return {
+    status: "PASS",
+    cleaned: true,
+    operationId: "rollback-test",
+    ...sourceEvidence(),
+    checks: { failureObserved: true, subclip: true, cleanup: true },
+    ...overrides,
+  };
+}
+
 function makeSnapshot(ids = ["subclip-1", "subclip-2", "subclip-3"]) {
   const items = ids.map((projectItemId, index) => ({
     projectItemId,
@@ -64,24 +90,12 @@ test("qualification advances only through verified save and later-session struct
   assert.equal(qualification.canPreparePersistence(record), false);
   assert.equal(qualification.canConfirmPersistence(record, "session-two"), false);
 
-  assert.throws(() => qualification.recordHostSelfTest(storage, environment, selection, {
-    status: "PASS",
-    cleaned: true,
+  assert.throws(() => qualification.recordHostSelfTest(storage, environment, selection, hostSelfTestResult({
     checks: { subclip: true, sequence: true, activation: false, cleanup: true },
-  }), /필요/);
+  })), /필요/);
 
-  record = qualification.recordHostSelfTest(storage, environment, selection, {
-    status: "PASS",
-    cleaned: true,
-    operationId: "self-test",
-    checks: { subclip: true, sequence: true, activation: true, cleanup: true },
-  }, "2026-08-22T00:01:00.000Z");
-  record = qualification.recordRollbackSelfTest(storage, environment, selection, {
-    status: "PASS",
-    cleaned: true,
-    operationId: "rollback-test",
-    checks: { failureObserved: true, subclip: true, cleanup: true },
-  }, "2026-08-22T00:02:00.000Z");
+  record = qualification.recordHostSelfTest(storage, environment, selection, hostSelfTestResult(), "2026-08-22T00:01:00.000Z");
+  record = qualification.recordRollbackSelfTest(storage, environment, selection, rollbackSelfTestResult(), "2026-08-22T00:02:00.000Z");
   record = qualification.recordPremiereTranscript(storage, environment, selection, {
     source: "premiere",
     segmentCount: 12,
@@ -116,6 +130,26 @@ test("qualification advances only through verified save and later-session struct
   assert.equal(qualification.isQualificationComplete(record), true);
   assert.match(qualification.qualificationSummary(record), /완료/);
   assert.match(qualification.qualificationReport(record), /"segmentCount": 12/);
+});
+
+test("self-test evidence must match the exact qualification source", () => {
+  const storage = makeStorage();
+  qualification.beginQualification(storage, environment, selection, "session-one");
+
+  assert.throws(() => qualification.recordHostSelfTest(storage, environment, selection, hostSelfTestResult({ clipId: "clip-2" })), /원본 클립/);
+  assert.throws(() => qualification.recordHostSelfTest(storage, environment, selection, hostSelfTestResult({ projectId: "project-2" })), /프로젝트/);
+  assert.throws(() => qualification.recordHostSelfTest(storage, environment, selection, hostSelfTestResult({ frameRate: 30 })), /길이 또는 프레임레이트/);
+
+  qualification.recordHostSelfTest(storage, environment, selection, hostSelfTestResult());
+  assert.throws(() => qualification.recordRollbackSelfTest(storage, environment, selection, rollbackSelfTestResult({ duration: 11 })), /길이 또는 프레임레이트/);
+});
+
+test("rollback qualification requires a host self-test pass first", () => {
+  const storage = makeStorage();
+  qualification.beginQualification(storage, environment, selection, "session-one");
+  assert.throws(() => qualification.recordRollbackSelfTest(storage, environment, selection, rollbackSelfTestResult()), /호스트 자체시험/);
+  qualification.recordHostSelfTest(storage, environment, selection, hostSelfTestResult());
+  assert.equal(qualification.recordRollbackSelfTest(storage, environment, selection, rollbackSelfTestResult()).steps.rollbackSelfTest.status, "PASS");
 });
 
 test("qualification is bound to the exact host and source selection", () => {
