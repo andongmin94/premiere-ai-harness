@@ -12,6 +12,7 @@ const REQUIRED_STEPS = Object.freeze([
   "playback",
   "persistence",
 ]);
+const REMAINING_RELEASE_GATE = "Creative Cloud install, update, and removal evidence is not represented by this file";
 
 export function buildQualificationEvidence(options = {}) {
   const packageJson = readJson(path.join(root, "package.json"));
@@ -26,7 +27,6 @@ export function buildQualificationEvidence(options = {}) {
   const qualification = readJson(qualificationFile);
   validateInputs(sourceManifest, ccxManifest, qualification, version);
 
-  const qualificationCanonical = canonicalJson(qualification);
   const sourceIdentity = qualification.selection;
   const evidence = {
     formatVersion: 1,
@@ -45,12 +45,11 @@ export function buildQualificationEvidence(options = {}) {
       sha256: ccxManifest.sha256,
       manifestFile: path.basename(ccxManifestFile),
       manifestSha256: sha256(fs.readFileSync(ccxManifestFile)),
-      installVerified: ccxManifest.installVerified === true,
-      distributionReady: ccxManifest.distributionReady === true,
+      installCandidate: ccxManifest.installCandidate === true,
     },
     qualification: {
       recordFile: path.basename(qualificationFile),
-      recordSha256: sha256(Buffer.from(qualificationCanonical)),
+      recordSha256: sha256(Buffer.from(canonicalJson(qualification))),
       environmentFingerprint: qualification.environmentFingerprint,
       sourceIdentitySha256: sha256(Buffer.from(canonicalJson({
         projectId: sourceIdentity.projectId,
@@ -69,10 +68,9 @@ export function buildQualificationEvidence(options = {}) {
       sourceAndCcxLinked: true,
       hostQualificationPassed: true,
       persistenceVerified: true,
-      installVerified: ccxManifest.installVerified === true,
-      distributionReady: ccxManifest.distributionReady === true,
     },
-    releaseReady: ccxManifest.installVerified === true && ccxManifest.distributionReady === true,
+    releaseReady: false,
+    remainingReleaseGate: REMAINING_RELEASE_GATE,
   };
   evidence.evidenceSha256 = sha256(Buffer.from(canonicalJson(evidence)));
 
@@ -91,14 +89,15 @@ export function verifyQualificationEvidence(value) {
   assertHex(evidence.source?.manifestSha256, 64, "source manifest SHA-256");
   assertHex(evidence.ccx?.sha256, 64, "CCX SHA-256");
   assertHex(evidence.ccx?.manifestSha256, 64, "CCX manifest SHA-256");
+  assert(evidence.ccx?.installCandidate === true, "CCX must be an install candidate");
   assertHex(evidence.qualification?.recordSha256, 64, "qualification record SHA-256");
   assertHex(evidence.qualification?.sourceIdentitySha256, 64, "qualification source identity SHA-256");
   assert(/^tx1-\d+-[0-9a-f]{16}$/.test(String(evidence.qualification?.transcriptFingerprint || "")), "invalid transcript fingerprint");
   assert(evidence.gates?.sourceAndCcxLinked === true, "source/CCX link gate must pass");
   assert(evidence.gates?.hostQualificationPassed === true, "host qualification gate must pass");
   assert(evidence.gates?.persistenceVerified === true, "persistence gate must pass");
-  const expectedReady = evidence.gates.installVerified === true && evidence.gates.distributionReady === true;
-  assert(evidence.releaseReady === expectedReady, "releaseReady does not match distribution gates");
+  assert(evidence.releaseReady === false, "qualification evidence alone may not claim release readiness");
+  assert(evidence.remainingReleaseGate === REMAINING_RELEASE_GATE, "remaining release gate is missing");
   const copy = structuredClone(evidence);
   const digest = String(copy.evidenceSha256 || "");
   delete copy.evidenceSha256;
@@ -119,6 +118,7 @@ function validateInputs(source, ccx, qualification, version) {
   assertText(ccx.sourceCommit, "CCX source commit");
   assertHex(ccx.sha256, 64, "CCX SHA-256");
   assert(Number.isInteger(ccx.bytes) && ccx.bytes > 0, "invalid CCX byte count");
+  assert(ccx.installCandidate === true, "CCX manifest is not an install candidate");
 
   assert(qualification?.formatVersion === 2 && qualification?.status === "PASS", "qualification report is not PASS");
   assert(qualification.productVersion === version, "qualification product version differs from package version");
