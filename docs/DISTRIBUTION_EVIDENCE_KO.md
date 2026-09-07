@@ -18,15 +18,56 @@ npm run evidence:qualification -- /path/to/qualification.json
 dist/PremiereAIHarness-Core-0.5.1-qualification-evidence.json
 ```
 
-## 2. Creative Cloud 검증 기록 작성
+## 2. 검증 워크스페이스 초기화
 
-별도 작업 디렉터리에 `distribution-verification.json`과 설치·업데이트·제거 증거 파일을 둡니다. `evidenceFiles`는 JSON 파일이 있는 디렉터리 아래의 상대 경로만 허용합니다. 심볼릭 링크와 상위 디렉터리 탈출은 허용하지 않습니다.
+`distribution-verification.json`을 처음부터 손으로 작성하지 않습니다. qualification evidence에서 plugin ID, 후보 버전, exact Git commit, CCX SHA-256을 읽어 저장소 밖에 안전한 초안을 생성합니다.
+
+```bash
+npm run evidence:init-distribution -- \
+  /path/to/PremiereAIHarness-Core-0.5.1-qualification-evidence.json \
+  0.5.0 \
+  /outside/repository/pai-0.5.1-distribution-verification
+```
+
+두 번째 인자는 동일 plugin ID로 업데이트 시험할 이전 버전입니다. 현재 후보와 다른 semver여야 합니다. 마지막 인자는 반드시 저장소 바깥의 비어 있는 경로여야 하며, 기존 파일이 있으면 초기화기는 덮어쓰지 않습니다.
+
+생성 결과:
+
+```text
+pai-0.5.1-distribution-verification/
+  distribution-verification.json
+  README.txt
+  install/
+  update/
+  removal/
+```
+
+초기 JSON은 identity/hash만 qualification evidence에서 자동 채웁니다. 검증 결과는 미리 통과시키지 않습니다.
+
+```json
+{
+  "sellerAttested": false,
+  "events": {
+    "install": { "status": "PENDING", "evidenceFiles": [] },
+    "update": { "status": "PENDING", "evidenceFiles": [] },
+    "removal": { "status": "PENDING", "evidenceFiles": [] }
+  }
+}
+```
+
+초기화기는 변조된 qualification evidence를 거부하고, 증거 워크스페이스가 저장소 안에 만들어지는 것도 거부합니다.
+
+## 3. 실제 Creative Cloud 검증 결과 기록
+
+각 실제 검증이 끝난 뒤 해당 폴더에 증거 파일을 넣고 생성된 `distribution-verification.json`의 관찰 결과만 갱신합니다. `evidenceFiles`는 JSON 파일이 있는 디렉터리 아래의 상대 경로만 허용합니다. 심볼릭 링크와 상위 디렉터리 탈출은 허용하지 않습니다.
+
+완료된 형태 예시는 다음과 같습니다.
 
 ```json
 {
   "formatVersion": 1,
   "evidenceKind": "premiere-ai-harness-creative-cloud-distribution-verification",
-  "verificationId": "seller-verification-001",
+  "verificationId": "distribution-0.5.1-0123456789ab",
   "method": "creative-cloud-desktop",
   "sellerAttested": true,
   "pluginId": "com.andongmin.premiere-ai-harness.core",
@@ -69,14 +110,16 @@ dist/PremiereAIHarness-Core-0.5.1-qualification-evidence.json
 
 각 단계는 증거 파일이 최소 1개 필요합니다. 파일 종류는 제한하지 않지만 일반 파일이어야 하며 파일당 50 MiB 이하, 단계당 최대 20개입니다. 최종 evidence에는 원본 파일을 복제하지 않고 상대 파일명·바이트 수·SHA-256만 기록합니다.
 
-## 3. final distribution evidence 생성
+모든 실제 검증을 끝낸 뒤에만 `sellerAttested`를 `true`로 바꿉니다. 초기화된 `PENDING` 상태를 PASS처럼 취급하지 않습니다.
 
-qualification evidence, 검증 기록, 실제 설치에 사용한 exact CCX 파일을 함께 전달합니다.
+## 4. final distribution evidence 생성
+
+qualification evidence, 초기화 후 실제 결과를 채운 검증 기록, 실제 설치에 사용한 exact CCX 파일을 함께 전달합니다.
 
 ```bash
 npm run evidence:distribution -- \
   /path/to/PremiereAIHarness-Core-0.5.1-qualification-evidence.json \
-  /path/to/distribution-verification.json \
+  /outside/repository/pai-0.5.1-distribution-verification/distribution-verification.json \
   /path/to/PremiereAIHarness-Core-0.5.1-premierepro.ccx
 ```
 
