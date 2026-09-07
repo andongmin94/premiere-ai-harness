@@ -4,10 +4,10 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { verifyQualificationEvidence } from "./build-qualification-evidence.mjs";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const EVENT_NAMES = Object.freeze(["install", "update", "removal"]);
 const MAX_EVIDENCE_FILES = 20;
 const MAX_EVIDENCE_BYTES = 50 * 1024 * 1024;
+const MAX_CCX_BYTES = 1024 * 1024 * 1024;
 const VERIFICATION_KIND = "premiere-ai-harness-creative-cloud-distribution-verification";
 const EVIDENCE_KIND = "premiere-ai-harness-final-distribution-evidence";
 
@@ -15,11 +15,10 @@ export function buildDistributionEvidence(options = {}) {
   const qualificationEvidenceFile = path.resolve(requiredPath(options.qualificationEvidenceFile, "qualification evidence"));
   const verificationFile = path.resolve(requiredPath(options.verificationFile, "distribution verification"));
   const ccxFile = path.resolve(requiredPath(options.ccxFile, "CCX file"));
-  const outputFile = path.resolve(options.outputFile || defaultOutputFile());
-
   const qualificationEvidence = verifyQualificationEvidence(readJson(qualificationEvidenceFile));
+  const outputFile = path.resolve(options.outputFile || defaultOutputFile(qualificationEvidence.version));
   const verification = readJson(verificationFile);
-  const ccx = inspectFile(ccxFile, null, MAX_EVIDENCE_BYTES * 20);
+  const ccx = inspectFile(ccxFile, null, MAX_CCX_BYTES);
   validateVerification(verification, qualificationEvidence, ccx);
 
   const verificationDirectory = path.dirname(verificationFile);
@@ -50,6 +49,7 @@ export function buildDistributionEvidence(options = {}) {
       recordSha256: sha256(Buffer.from(canonicalJson(verification))),
       verificationId: requiredText(verification.verificationId, "verificationId"),
       method: "creative-cloud-desktop",
+      sellerAttested: true,
       events,
     },
     gates: {
@@ -79,9 +79,10 @@ export function verifyDistributionEvidence(value) {
   assertHex(evidence.qualificationEvidence?.sha256, 64, "qualification evidence SHA-256");
   assertHex(evidence.qualificationEvidence?.evidenceSha256, 64, "qualification evidence content SHA-256");
   assertHex(evidence.ccx?.sha256, 64, "CCX SHA-256");
-  assert(Number.isInteger(evidence.ccx?.bytes) && evidence.ccx.bytes > 0, "invalid CCX byte count");
+  assert(Number.isInteger(evidence.ccx?.bytes) && evidence.ccx.bytes > 0 && evidence.ccx.bytes <= MAX_CCX_BYTES, "invalid CCX byte count");
   assertHex(evidence.distributionVerification?.recordSha256, 64, "distribution verification record SHA-256");
   assert(evidence.distributionVerification?.method === "creative-cloud-desktop", "unexpected distribution verification method");
+  assert(evidence.distributionVerification?.sellerAttested === true, "seller attestation is missing");
   for (const name of EVENT_NAMES) validateStoredEvent(name, evidence.distributionVerification?.events?.[name], evidence.version);
   for (const name of ["qualificationEvidencePassed", "exactCcxMatched", "installPassed", "updatePassed", "removalPassed", "evidenceFilesHashed"]) {
     assert(evidence.gates?.[name] === true, `distribution gate is not PASS: ${name}`);
@@ -143,7 +144,8 @@ function inspectEvidenceFiles(value, baseDirectory, label) {
     const resolved = path.resolve(baseDirectory, relative);
     const rootPrefix = `${path.resolve(baseDirectory)}${path.sep}`;
     assert(resolved.startsWith(rootPrefix), `${label} evidence file escapes the verification directory`);
-    const file = inspectFile(resolved, relative, MAX_EVIDENCE_BYTES);
+    const canonicalRelative = path.relative(baseDirectory, resolved);
+    const file = inspectFile(resolved, canonicalRelative, MAX_EVIDENCE_BYTES);
     assert(!names.has(file.file), `${label} evidence file name is duplicated`);
     names.add(file.file);
     return Object.freeze(file);
@@ -162,15 +164,20 @@ function inspectFile(file, displayName, maxBytes) {
 }
 
 function validateStoredEvent(name, value, version) {
-  assert(value?.status === "PASS" && validTimestamp(value.completedAt, `${name} completedAt`), `invalid stored ${name} event`);
-  assert(Array.isArray(value.evidenceFiles) && value.evidenceFiles.length > 0, `stored ${name} evidence files are missing`);
+  assert(value?.status === "PASS", `invalid stored ${name} event`);
+  validTimestamp(value.completedAt, `${name} completedAt`);
+  assert(Array.isArray(value.evidenceFiles) && value.evidenceFiles.length > 0 && value.evidenceFiles.length <= MAX_EVIDENCE_FILES, `stored ${name} evidence files are invalid`);
   for (const file of value.evidenceFiles) {
-    assertText(file.file, `${name} evidence file`);
-    assert(Number.isInteger(file.bytes) && file.bytes > 0, `invalid ${name} evidence byte count`);
+    const filename = requiredText(file.file, `${name} evidence file`);
+    assert(!path.isAbsolute(filename) && !normalizeRelative(filename).split("/").includes(".."), `invalid stored ${name} evidence path`);
+    assert(Number.isInteger(file.bytes) && file.bytes > 0 && file.bytes <= MAX_EVIDENCE_BYTES, `invalid ${name} evidence byte count`);
     assertHex(file.sha256, 64, `${name} evidence SHA-256`);
   }
   if (name === "install") assert(value.version === version && value.panelVisible === true, "stored install event is incomplete");
-  if (name === "update") assert(value.toVersion === version && value.fromVersion !== version && value.samePluginId === true && value.panelVisible === true, "stored update event is incomplete");
+  if (name === "update") {
+    assertSemver(value.fromVersion, "stored update fromVersion");
+    assert(value.toVersion === version && value.fromVersion !== version && value.samePluginId === true && value.panelVisible === true, "stored update event is incomplete");
+  }
   if (name === "removal") assert(value.version === version && value.panelAbsent === true && value.pluginOwnedResidualDataFound === false, "stored removal event is incomplete");
 }
 
@@ -189,7 +196,7 @@ function assertHex(value, length, label) { assert(new RegExp(`^[0-9a-f]{${length
 function assertSemver(value, label) { assert(/^\d+\.\d+\.\d+$/.test(String(value || "")), `invalid ${label}`); }
 function normalizeRelative(value) { return String(value).replace(/\\/g, "/"); }
 function assert(condition, message) { if (!condition) throw new Error(message); }
-function defaultOutputFile() { const version = readJson(path.join(root, "package.json")).version; return path.join(root, "dist", `PremiereAIHarness-Core-${version}-distribution-evidence.json`); }
+function defaultOutputFile(version) { return path.join(process.cwd(), "dist", `PremiereAIHarness-Core-${version}-distribution-evidence.json`); }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const evidence = buildDistributionEvidence({
