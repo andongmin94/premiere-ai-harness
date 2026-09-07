@@ -56,8 +56,8 @@ test("rough cut rechecks source invariance after sequence creation and removes t
   const fixture = makeFixture();
   const originalCreateSequence = fixture.project.createSequenceFromMedia.bind(fixture.project);
   const originalGetOutPoint = fixture.source.getOutPoint.bind(fixture.source);
-  fixture.project.createSequenceFromMedia = async function () {
-    const sequence = await originalCreateSequence(...arguments);
+  fixture.project.createSequenceFromMedia = async function (name, clips, targetBin) {
+    const sequence = await originalCreateSequence(name, clips, targetBin);
     fixture.source.getOutPoint = async function (mediaType) {
       const value = await originalGetOutPoint(mediaType);
       return { seconds: value.seconds + (mediaType === "video" ? 1 / 25 : 0) };
