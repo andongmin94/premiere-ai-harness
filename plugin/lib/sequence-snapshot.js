@@ -7,7 +7,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function (runtime) {
   "use strict";
 
-  const SNAPSHOT_FORMAT = 2;
+  const SNAPSHOT_FORMAT = 3;
   const TIME_EPSILON = 0.001;
 
   async function readSequenceSnapshot(ppro, sequence) {
@@ -44,26 +44,31 @@
 
   async function readTrackItem(item, label, mediaType) {
     if (!item || typeof item.getStartTime !== "function" || typeof item.getEndTime !== "function"
+      || typeof item.getInPoint !== "function" || typeof item.getOutPoint !== "function"
       || typeof item.getProjectItem !== "function") throw new Error(`${label} 트랙 항목 API가 올바르지 않습니다.`);
     const projectItem = await item.getProjectItem();
     const projectItemId = runtime.clipIdentity(projectItem);
     if (!projectItemId) throw new Error(`${label} 원본 식별자를 읽지 못했습니다.`);
     if (typeof projectItem?.getInPoint !== "function" || typeof projectItem?.getOutPoint !== "function") {
-      throw new Error(`${label} source in/out API를 읽지 못했습니다.`);
+      throw new Error(`${label} project item source in/out API를 읽지 못했습니다.`);
     }
     const start = readSeconds(await item.getStartTime(), `${label} 시작`);
     const end = readSeconds(await item.getEndTime(), `${label} 종료`);
-    const sourceIn = readSeconds(await runtime.maybePromise(projectItem.getInPoint(mediaType)), `${label} source in`);
-    const sourceOut = readSeconds(await runtime.maybePromise(projectItem.getOutPoint(mediaType)), `${label} source out`);
+    const projectSourceIn = readSeconds(await runtime.maybePromise(projectItem.getInPoint(mediaType)), `${label} project source in`);
+    const projectSourceOut = readSeconds(await runtime.maybePromise(projectItem.getOutPoint(mediaType)), `${label} project source out`);
+    const trackSourceIn = readSeconds(await runtime.maybePromise(item.getInPoint()), `${label} track source in`);
+    const trackSourceOut = readSeconds(await runtime.maybePromise(item.getOutPoint()), `${label} track source out`);
     if (end <= start) throw new Error(`${label} 트랙 항목 시간이 올바르지 않습니다.`);
-    if (sourceOut <= sourceIn) throw new Error(`${label} source 시간이 올바르지 않습니다.`);
+    if (projectSourceOut <= projectSourceIn || trackSourceOut <= trackSourceIn) throw new Error(`${label} source 시간이 올바르지 않습니다.`);
     return {
       projectItemId,
       projectItemName: String(projectItem?.name || ""),
       start,
       end,
-      sourceIn,
-      sourceOut,
+      projectSourceIn,
+      projectSourceOut,
+      trackSourceIn,
+      trackSourceOut,
     };
   }
 
@@ -96,16 +101,22 @@
     const projectItemId = String(value?.projectItemId || "").trim();
     const start = finiteNonNegative(value?.start, `${label} 시작`);
     const end = finiteNonNegative(value?.end, `${label} 종료`);
-    const sourceIn = finiteNonNegative(value?.sourceIn, `${label} source in`);
-    const sourceOut = finiteNonNegative(value?.sourceOut, `${label} source out`);
-    if (!projectItemId || end <= start || sourceOut <= sourceIn) throw new Error(`${label} 트랙 항목 구조가 올바르지 않습니다.`);
+    const projectSourceIn = finiteNonNegative(value?.projectSourceIn, `${label} project source in`);
+    const projectSourceOut = finiteNonNegative(value?.projectSourceOut, `${label} project source out`);
+    const trackSourceIn = finiteNonNegative(value?.trackSourceIn, `${label} track source in`);
+    const trackSourceOut = finiteNonNegative(value?.trackSourceOut, `${label} track source out`);
+    if (!projectItemId || end <= start || projectSourceOut <= projectSourceIn || trackSourceOut <= trackSourceIn) {
+      throw new Error(`${label} 트랙 항목 구조가 올바르지 않습니다.`);
+    }
     return Object.freeze({
       projectItemId,
       projectItemName: String(value?.projectItemName || ""),
       start,
       end,
-      sourceIn,
-      sourceOut,
+      projectSourceIn,
+      projectSourceOut,
+      trackSourceIn,
+      trackSourceOut,
     });
   }
 
@@ -184,8 +195,9 @@
       }
       if (existing.projectItemName !== item.projectItemName
         || !sameTime(existing.start, item.start) || !sameTime(existing.end, item.end)
-        || !sameTime(existing.sourceIn, item.sourceIn) || !sameTime(existing.sourceOut, item.sourceOut)) {
-        throw new Error("같은 생성 서브클립의 A/V 경계 또는 source 경계가 서로 일치하지 않습니다.");
+        || !sameTime(existing.projectSourceIn, item.projectSourceIn) || !sameTime(existing.projectSourceOut, item.projectSourceOut)
+        || !sameTime(existing.trackSourceIn, item.trackSourceIn) || !sameTime(existing.trackSourceOut, item.trackSourceOut)) {
+        throw new Error("같은 생성 서브클립의 A/V timeline 또는 source 경계가 서로 일치하지 않습니다.");
       }
     }
     return [...grouped.values()].sort(compareItems);
