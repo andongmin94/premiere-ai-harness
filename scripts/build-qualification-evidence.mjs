@@ -33,7 +33,7 @@ export function buildQualificationEvidence(options = {}) {
     evidenceKind: "premiere-ai-harness-release-qualification-evidence",
     pluginId: sourceManifest.pluginId,
     version,
-    sourceCommit: ccxManifest.sourceCommit,
+    sourceCommit: String(ccxManifest.sourceCommit).toLowerCase(),
     source: {
       treeSha256: sourceManifest.treeSha256,
       manifestFile: path.basename(sourceManifestFile),
@@ -85,6 +85,7 @@ export function verifyQualificationEvidence(value) {
   assert(evidence?.evidenceKind === "premiere-ai-harness-release-qualification-evidence", "unexpected evidence kind");
   assertText(evidence.pluginId, "pluginId");
   assertSemver(evidence.version, "version");
+  assertHex(evidence.sourceCommit, 40, "source commit");
   assertHex(evidence.source?.treeSha256, 64, "source tree SHA-256");
   assertHex(evidence.source?.manifestSha256, 64, "source manifest SHA-256");
   assertHex(evidence.ccx?.sha256, 64, "CCX SHA-256");
@@ -115,7 +116,7 @@ function validateInputs(source, ccx, qualification, version) {
   assert(ccx?.formatVersion === 1 && ccx?.packageKind === "uxp-ccx-install-candidate", "invalid CCX manifest");
   assert(ccx.pluginId === source.pluginId && ccx.version === version, "CCX identity differs from source manifest");
   assert(ccx.sourceTreeSha256 === source.treeSha256, "CCX source tree differs from source manifest");
-  assertText(ccx.sourceCommit, "CCX source commit");
+  assertHex(String(ccx.sourceCommit || "").toLowerCase(), 40, "CCX source commit");
   assertHex(ccx.sha256, 64, "CCX SHA-256");
   assert(Number.isInteger(ccx.bytes) && ccx.bytes > 0, "invalid CCX byte count");
   assert(ccx.installCandidate === true, "CCX manifest is not an install candidate");
