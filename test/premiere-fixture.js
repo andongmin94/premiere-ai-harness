@@ -120,9 +120,14 @@ function makeFixture(inputOptions = {}) {
 
   function makeTrackItem(projectItem, start, end) {
     return {
+      projectItem,
+      trackSourceIn: 0,
+      trackSourceOut: Math.max(0, end - start),
       async getStartTime() { return tick(start); },
       async getEndTime() { return tick(end); },
-      async getProjectItem() { return projectItem; },
+      async getInPoint() { return tick(this.trackSourceIn); },
+      async getOutPoint() { return tick(this.trackSourceOut); },
+      async getProjectItem() { return this.projectItem; },
     };
   }
 
@@ -138,17 +143,17 @@ function makeFixture(inputOptions = {}) {
 
   function makeSequence(name, clips, guid) {
     let cursor = 0;
-    const timelineItems = [];
+    const placements = [];
     if (!options.emptySequence) {
       const selected = options.missingLastSequenceItem ? clips.slice(0, -1) : clips;
       for (const clip of selected) {
         const length = Math.max(0, Number(clip.endFrame) - Number(clip.startFrame)) / fps;
-        timelineItems.push(makeTrackItem(clip, cursor, cursor + length));
+        placements.push({ clip, start: cursor, end: cursor + length });
         cursor += length;
       }
     }
-    const videoItems = options.omitVideo ? [] : timelineItems.map((item) => item);
-    const audioItems = options.omitAudio ? [] : timelineItems.map((item) => item);
+    const videoItems = options.omitVideo ? [] : placements.map((item) => makeTrackItem(item.clip, item.start, item.end));
+    const audioItems = options.omitAudio ? [] : placements.map((item) => makeTrackItem(item.clip, item.start, item.end));
     const sequence = {
       guid,
       name,
