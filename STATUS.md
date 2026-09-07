@@ -32,6 +32,8 @@
 - POSIX Info-ZIP 3.0 기반 결정론적 CCX와 안전 경로·중복·암호화·CRC·소스 일치 검사
 - source tree SHA-256·Git commit·CCX SHA-256·실제 Premiere qualification PASS를 qualification evidence JSON으로 결합
 - qualification evidence 자체 SHA-256과 사후 변조 검증
+- qualification evidence에서 저장소 밖 PENDING distribution verification workspace 자동 초기화
+- 워크스페이스 초기화 시 plugin ID·버전·Git commit·CCX SHA-256 자동 채움과 기존 파일 덮어쓰기 차단
 - actual CCX 파일 바이트와 qualification evidence의 CCX SHA-256 재대조
 - Creative Cloud Desktop 설치·업데이트·제거 PASS와 단계별 증거 파일 SHA-256 결합
 - final distribution evidence 자체 SHA-256과 사후 변조 검증
@@ -39,6 +41,8 @@
 정확한 소스 검증 결과는 대상 커밋에서 `npm ci`와 `npm run verify`를 실행해 확인합니다. 결정론적 CCX 검증은 깨끗한 같은 커밋을 POSIX Info-ZIP 3.0 환경에서 `npm run verify:distribution`으로 실행하고, 생성된 manifest와 SHA-256 기록을 별도로 보관합니다.
 
 실제 Premiere qualification이 PASS인 경우 패널의 기계 판독용 JSON을 보관한 뒤 `npm run evidence:qualification -- /path/to/qualification.json`으로 source manifest·CCX manifest와 결합합니다. 이 단계의 `releaseReady`는 항상 `false`입니다.
+
+그 다음 `npm run evidence:init-distribution -- <qualification-evidence> <previous-version> <outside-repo-workspace>`로 저장소 밖 검증 워크스페이스를 초기화합니다. exact identity/hash만 자동 채워지고 `sellerAttested: false`, 설치·업데이트·제거는 모두 `PENDING`으로 시작합니다. 실제 검증 결과와 증거 파일을 채운 뒤에만 final distribution evidence를 생성합니다.
 
 Creative Cloud Desktop에서 exact CCX 설치, 동일 plugin ID의 이전 시험 버전에서 현재 후보로 업데이트, 현재 후보 제거를 각각 증거 파일과 함께 확인한 뒤 `npm run evidence:distribution -- <qualification-evidence> <distribution-verification.json> <exact.ccx>`을 실행합니다. actual CCX와 모든 단계별 증거가 일치한 경우에만 final distribution evidence의 `releaseReady`가 `true`가 됩니다. 이 값은 Adobe 원격 attestation이 아니라 판매자가 직접 수행·보관한 수동 검증 게이트의 완료를 뜻합니다.
 
@@ -54,6 +58,7 @@ Creative Cloud Desktop에서 exact CCX 설치, 동일 plugin ID의 이전 시험
 - 원본 시퀀스와 원본 미디어 불변
 - 프로젝트 저장, Premiere 종료·재실행, 새 패널 세션 구조 확인
 - qualification evidence JSON 생성·보관
+- 저장소 밖 distribution verification workspace 초기화
 - 동일 ID의 이전 시험 버전에서 현재 후보로 업데이트 설치
 - Creative Cloud Desktop에서 현재 후보 제거와 패널 미노출·잔여 데이터 확인
 - final distribution evidence JSON의 `releaseReady: true` 확인·보관
