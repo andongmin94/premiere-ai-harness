@@ -138,15 +138,20 @@ function normalizeEvent(name, value, baseDirectory, version) {
 
 function inspectEvidenceFiles(value, baseDirectory, label) {
   assert(Array.isArray(value) && value.length > 0 && value.length <= MAX_EVIDENCE_FILES, `${label} evidenceFiles must contain 1-${MAX_EVIDENCE_FILES} files`);
+  const baseReal = fs.realpathSync(baseDirectory);
   const names = new Set();
   return Object.freeze(value.map((entry, index) => {
     const relative = String(entry || "").trim();
     assert(relative && !path.isAbsolute(relative), `${label} evidence file ${index + 1} must be a relative path`);
-    const resolved = path.resolve(baseDirectory, relative);
-    const rootPrefix = `${path.resolve(baseDirectory)}${path.sep}`;
-    assert(resolved.startsWith(rootPrefix), `${label} evidence file escapes the verification directory`);
-    const canonicalRelative = path.relative(baseDirectory, resolved);
-    const file = inspectFile(resolved, canonicalRelative, MAX_EVIDENCE_BYTES);
+    const lexical = path.resolve(baseDirectory, relative);
+    const lexicalRelative = path.relative(baseDirectory, lexical);
+    assert(isContainedRelative(lexicalRelative), `${label} evidence file escapes the verification directory`);
+    const lexicalStat = fs.lstatSync(lexical);
+    assert(!lexicalStat.isSymbolicLink(), `${label} evidence file may not be a symbolic link`);
+    const real = fs.realpathSync(lexical);
+    const realRelative = path.relative(baseReal, real);
+    assert(isContainedRelative(realRelative), `${label} evidence file realpath escapes the verification directory`);
+    const file = inspectFile(real, realRelative, MAX_EVIDENCE_BYTES);
     assert(!names.has(file.file), `${label} evidence file name is duplicated`);
     names.add(file.file);
     return Object.freeze(file);
@@ -170,7 +175,7 @@ function validateStoredEvent(name, value, version) {
   assert(Array.isArray(value.evidenceFiles) && value.evidenceFiles.length > 0 && value.evidenceFiles.length <= MAX_EVIDENCE_FILES, `stored ${name} evidence files are invalid`);
   for (const file of value.evidenceFiles) {
     const filename = requiredText(file.file, `${name} evidence file`);
-    assert(!path.isAbsolute(filename) && !normalizeRelative(filename).split("/").includes(".."), `invalid stored ${name} evidence path`);
+    assert(isContainedRelative(filename), `invalid stored ${name} evidence path`);
     assert(Number.isInteger(file.bytes) && file.bytes > 0 && file.bytes <= MAX_EVIDENCE_BYTES, `invalid ${name} evidence byte count`);
     assertHex(file.sha256, 64, `${name} evidence SHA-256`);
   }
@@ -196,6 +201,10 @@ function assertText(value, label) { requiredText(value, label); }
 function assertHex(value, length, label) { assert(new RegExp(`^[0-9a-f]{${length}}$`).test(String(value || "").toLowerCase()), `invalid ${label}`); }
 function assertSemver(value, label) { assert(/^\d+\.\d+\.\d+$/.test(String(value || "")), `invalid ${label}`); }
 function normalizeRelative(value) { return String(value).replace(/\\/g, "/"); }
+function isContainedRelative(value) {
+  const normalized = normalizeRelative(value);
+  return Boolean(normalized && normalized !== "." && !path.isAbsolute(value) && normalized !== ".." && !normalized.startsWith("../"));
+}
 function assert(condition, message) { if (!condition) throw new Error(message); }
 function defaultOutputFile(version) { return path.join(root, "dist", `PremiereAIHarness-Core-${version}-distribution-evidence.json`); }
 
