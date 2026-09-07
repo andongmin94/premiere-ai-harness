@@ -25,6 +25,7 @@
     "Transcript.hasTranscript",
     "Transcript.exportToJSON",
     "ClipProjectItem.getMedia",
+    "ClipProjectItem.getMediaFilePath",
     "ClipProjectItem.getFootageInterpretation",
     "ClipProjectItem.createSubClipAction",
     "ClipProjectItem.getInPoint",

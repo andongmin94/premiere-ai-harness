@@ -129,6 +129,7 @@ function checkAdobeContract(text) {
     "TickTime.createWithFrameAndFrameRate": "ppro.TickTime.createWithFrameAndFrameRate",
     "FrameRate.createWithValue": "ppro.FrameRate.createWithValue",
     "ClipProjectItem.createSubClipAction": "createSubClipAction",
+    "ClipProjectItem.getMediaFilePath": "getMediaFilePath",
     "ClipProjectItem.getInPoint": "getInPoint",
     "ClipProjectItem.getOutPoint": "getOutPoint",
     "FolderItem.createBinAction": "createBinAction",

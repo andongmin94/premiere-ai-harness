@@ -30,7 +30,12 @@
     if (await callBoolean(clip, "isSequence")) throw new Error("중첩 시퀀스는 현재 지원하지 않습니다.");
     if (await callBoolean(clip, "isMergedClip")) throw new Error("병합 클립은 현재 지원하지 않습니다.");
     if (await callBoolean(clip, "isMulticamClip")) throw new Error("멀티캠 원본은 현재 Core 러프컷에서 지원하지 않습니다.");
-    if (typeof clip?.createSubClipAction !== "function") throw new Error("Premiere Pro 26.3 이상이 필요합니다.");
+    if (typeof clip?.createSubClipAction !== "function" || typeof clip?.getMediaFilePath !== "function"
+      || typeof clip?.getInPoint !== "function" || typeof clip?.getOutPoint !== "function") {
+      throw new Error("Premiere Pro 26.3의 원본 검증 API를 사용할 수 없습니다.");
+    }
+    const mediaPath = String(await maybePromise(clip.getMediaFilePath()) || "").trim();
+    if (!mediaPath) throw new Error("파일 경로를 확인할 수 있는 일반 원본 미디어 클립만 지원합니다.");
   }
 
   async function readSourceTiming(clip) {
