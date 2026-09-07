@@ -113,7 +113,22 @@ test("controller boots with the actual DOM contract and completes the core flow"
   assert.equal(controller.getSession().selection, null);
 });
 
-test("guided qualification requires a later panel session before persistence can pass", async () => {
+test("host self-test rejects a Premiere selection that changed after inspection", async () => {
+  const document = makeDocument();
+  const storage = makeStorage();
+  const fixture = makeFixture();
+  const controller = controllerApi.createController({ document, storage, requireFn: makeRequire(fixture.ppro) });
+  controller.initialize();
+  await controller.inspectSelection();
+  fixture.source.id = "clip-2";
+
+  await controller.runHostSelfTest();
+  assert.equal(storage.values.has(certification.CERTIFICATION_STORAGE_KEY), false);
+  assert.equal(fixture.project.transactions.length, 0);
+  assert.match(document.elements.get("status").textContent, /원본 클립이 바뀌었습니다/);
+});
+
+test("guided qualification requires host self-test before rollback and a later panel session before persistence", async () => {
   const storage = makeStorage();
   const fixture = makeFixture();
   const firstDocument = makeDocument();
@@ -126,7 +141,9 @@ test("guided qualification requires a later panel session before persistence can
   first.initialize();
   await first.inspectSelection();
   await first.startQualification();
+  assert.equal(firstDocument.elements.get("rollback-self-test").disabled, true);
   await first.runHostSelfTest();
+  assert.equal(firstDocument.elements.get("rollback-self-test").disabled, false);
   await first.runRollbackSelfTest();
   await first.loadPremiereTranscript();
   await first.applyRoughCut();
