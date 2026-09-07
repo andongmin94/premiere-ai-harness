@@ -15,6 +15,9 @@
 - 프로젝트·원본·전사문 stale-state 차단
 - 호스트·롤백 자체시험 직전 프로젝트·클립·길이·프레임레이트 재검증
 - 자체시험 PASS 결과와 qualification 대상 원본의 식별자·타이밍 재대조
+- 실제 Premiere 전사문 fingerprint와 qualification 러프컷 입력의 provenance 결합
+- 붙여넣은 전사문 또는 변경된 Premiere 전사문으로 qualification 러프컷을 우회하는 경로 차단
+- 저장된 qualification 단계 간 transcript·roughCut·playback·persistence 불변조건 재검증
 - 프레임 안쪽 정렬과 사라지는 유지 구간 차단
 - 생성 시퀀스의 종료 시간·트랙·클립 순서·A/V 경계 검증
 - 부분 mutation 뒤 이번 작업의 시퀀스·빈·서브클립 롤백
@@ -34,7 +37,7 @@
 - Creative Cloud Desktop에서 exact CCX 설치
 - Premiere Pro 26.3+ 패널 로드
 - 실제 클립의 호스트·롤백 자체시험
-- 실제 Premiere transcript export
+- 실제 Premiere transcript export와 fingerprint 결합 확인
 - 서브클립 프레임 경계와 A/V sync
 - 원본 시퀀스와 원본 미디어 불변
 - 프로젝트 저장, Premiere 종료·재실행, 새 패널 세션 구조 확인
