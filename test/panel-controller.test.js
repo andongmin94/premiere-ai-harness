@@ -142,6 +142,9 @@ test("guided qualification requires host self-test before rollback and a later p
   await first.inspectSelection();
   await first.startQualification();
   assert.equal(firstDocument.elements.get("rollback-self-test").disabled, true);
+  await first.runRollbackSelfTest();
+  assert.equal(fixture.project.transactions.length, 0);
+  assert.match(firstDocument.elements.get("status").textContent, /호스트 자체시험/);
   await first.runHostSelfTest();
   assert.equal(firstDocument.elements.get("rollback-self-test").disabled, false);
   await first.runRollbackSelfTest();
