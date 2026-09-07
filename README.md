@@ -66,14 +66,38 @@ dist/PremiereAIHarness-Core-0.5.1-qualification-evidence.json
 
 이 파일은 **qualification evidence candidate**일 뿐이며 `releaseReady`는 항상 `false`입니다. Creative Cloud 실제 설치·업데이트·제거 증거는 별도 실제 Adobe 게이트이므로 이 파일만으로 판매판이나 GA를 주장하지 않습니다.
 
+## Distribution verification workspace
+
+`distribution-verification.json`의 plugin ID, 버전, Git commit, CCX SHA-256을 손으로 복사하지 않도록 qualification evidence에서 검증 워크스페이스를 초기화할 수 있습니다.
+
+```bash
+npm run evidence:init-distribution -- \
+  /path/to/PremiereAIHarness-Core-0.5.1-qualification-evidence.json \
+  0.5.0 \
+  /outside/repository/pai-0.5.1-distribution-verification
+```
+
+두 번째 인자는 현재 후보로 업데이트할 **이전 시험 버전**이고, 마지막 인자는 반드시 저장소 바깥의 비어 있는 경로여야 합니다. 초기화기는 다음을 생성합니다.
+
+```text
+pai-0.5.1-distribution-verification/
+  distribution-verification.json
+  README.txt
+  install/
+  update/
+  removal/
+```
+
+초안은 exact identity/hash만 자동 채우고 `sellerAttested: false`, 세 이벤트 `status: PENDING`, 증거 파일 목록은 빈 배열로 둡니다. 실제 검증 전에 PASS가 미리 기록되지는 않습니다. 각 실제 검증이 끝날 때 해당 폴더에 증거 파일을 넣고 관찰 결과만 JSON에 반영합니다.
+
 ## Final distribution evidence
 
-Creative Cloud Desktop에서 exact CCX의 설치, 동일 plugin ID의 이전 시험 버전에서 현재 후보로 업데이트, 현재 후보 제거까지 실제로 확인한 뒤 `distribution-verification.json`과 각 단계의 증거 파일을 보관합니다.
+Creative Cloud Desktop에서 exact CCX의 설치, 동일 plugin ID의 이전 시험 버전에서 현재 후보로 업데이트, 현재 후보 제거까지 실제로 확인한 뒤 초기화된 `distribution-verification.json`과 각 단계의 증거 파일을 사용합니다.
 
 ```bash
 npm run evidence:distribution -- \
   /path/to/PremiereAIHarness-Core-0.5.1-qualification-evidence.json \
-  /path/to/distribution-verification.json \
+  /outside/repository/pai-0.5.1-distribution-verification/distribution-verification.json \
   /path/to/PremiereAIHarness-Core-0.5.1-premierepro.ccx
 ```
 
@@ -100,6 +124,7 @@ dist/PremiereAIHarness-Core-0.5.1-distribution-evidence.json
 → 프로젝트 저장과 시퀀스 구조 기록
 → Premiere 또는 패널을 다시 열어 새 패널 세션에서 구조 동일성 확인
 → qualification evidence JSON 생성·보관
+→ 저장소 밖 distribution verification workspace 초기화
 → 동일 ID의 이전 시험 버전에서 현재 후보로 업데이트 설치 확인
 → 현재 후보 제거와 패널 미노출·잔여 플러그인 데이터 확인
 → final distribution evidence JSON 생성·보관
