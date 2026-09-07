@@ -90,14 +90,29 @@ editor-flow.js / ui-view.js
 
 의도된 실패 롤백 시험은 같은 원본의 호스트 자체시험 PASS 뒤에만 실행합니다. 모든 단계와 정리가 통과한 경우에만 해당 검증 단계를 PASS로 기록합니다.
 
+## Premiere 전사문 provenance
+
+Qualification에서 실제 Premiere 전사문을 불러오면 정규화된 전사 구간의 시간·텍스트·화자에서 결정론적 fingerprint를 계산합니다. 원문 transcript JSON은 qualification 기록에 저장하지 않습니다.
+
+```text
+Premiere transcript export
+→ normalized segments
+→ transcript fingerprint 기록
+→ 현재 편집안의 transcript source가 Premiere인지 확인
+→ 러프컷 mutation 직전 fingerprint 재계산·대조
+→ 생성된 roughCut step에 같은 fingerprint 기록
+```
+
+Qualification이 활성화된 동안 붙여넣은 SRT·WebVTT·JSON 편집안은 일반 러프컷에는 사용할 수 있지만 qualification 러프컷으로는 사용할 수 없습니다. 러프컷이 기록된 뒤 다른 Premiere 전사문 fingerprint로 qualification 기록을 덮어쓰는 것도 차단합니다. 저장된 기록을 읽을 때도 `premiereTranscript`와 `roughCut` fingerprint가 다르면 전체 qualification 기록을 무효로 취급합니다.
+
 ## 영속 검증
 
-프로젝트 저장 준비는 호스트 자체시험, 실패 롤백 시험, 실제 Premiere 전사문, 러프컷 생성, 사용자의 재생 확인이 모두 PASS인 경우에만 허용합니다.
+프로젝트 저장 준비는 호스트 자체시험, 실패 롤백 시험, 실제 Premiere 전사문, 그 전사문 fingerprint에 결합된 러프컷 생성, 사용자의 재생 확인이 모두 PASS인 경우에만 허용합니다.
 
 ```text
 러프컷 생성 직후 구조 기록
 → 사용자의 A/V 싱크·원본 불변 확인
-→ 모든 pre-save qualification 단계 PASS 확인
+→ 모든 pre-save qualification 단계와 transcript provenance 일치 확인
 → project.save() 성공 확인
 → 저장 전후 구조 동일성 확인
 → 저장을 준비한 패널 세션 종료
@@ -115,11 +130,12 @@ editor-flow.js / ui-view.js
 4. 자동 선택 삭제량은 프리셋 상한 안에서만 선택합니다.
 5. 실제 적용 전 동일 호스트 조합의 자체시험 PASS를 요구합니다.
 6. 실제 편집과 자체시험 mutation 직전에 프로젝트·클립 ID·길이·프레임레이트를 재검증하며, Premiere 전사문을 사용한 편집은 전사문도 재검증합니다.
-7. 기대한 프로젝트·클립 식별자를 호스트에서 읽지 못하는 경우도 stale-state 오류로 차단합니다.
-8. 유지 구간은 원본 프레임 안쪽으로 정렬하며 사라지는 구간은 오류로 차단합니다.
-9. 성공 출력은 `PAI_OUTPUT_` 전용 빈에 격리합니다.
-10. 내부 시험 자산은 엄격한 `PAI_INTERNAL_*` 형식만 사용합니다.
-11. 실패 시 이번 작업에서 생성한 ID 기준 자산만 정리하고, 이름만 같은 기존 자산은 건드리지 않습니다.
-12. 정리 실패를 숨기지 않습니다.
-13. 기존 시퀀스와 원본 미디어는 수정하지 않습니다.
-14. 사용자가 생성 빈에 넣은 항목이 발견되면 보존하고 정리 실패를 보고합니다.
+7. Qualification 러프컷은 기록된 Premiere 전사문 fingerprint와 현재 편집안 fingerprint가 동일한 경우에만 mutation을 허용합니다.
+8. 기대한 프로젝트·클립 식별자를 호스트에서 읽지 못하는 경우도 stale-state 오류로 차단합니다.
+9. 유지 구간은 원본 프레임 안쪽으로 정렬하며 사라지는 구간은 오류로 차단합니다.
+10. 성공 출력은 `PAI_OUTPUT_` 전용 빈에 격리합니다.
+11. 내부 시험 자산은 엄격한 `PAI_INTERNAL_*` 형식만 사용합니다.
+12. 실패 시 이번 작업에서 생성한 ID 기준 자산만 정리하고, 이름만 같은 기존 자산은 건드리지 않습니다.
+13. 정리 실패를 숨기지 않습니다.
+14. 기존 시퀀스와 원본 미디어는 수정하지 않습니다.
+15. 사용자가 생성 빈에 넣은 항목이 발견되면 보존하고 정리 실패를 보고합니다.

@@ -90,6 +90,7 @@
     if (!value || Number(value.formatVersion) !== QUALIFICATION_FORMAT) throw new Error("검증 기록 형식이 올바르지 않습니다.");
     const steps = {};
     for (const name of QUALIFICATION_STEPS) steps[name] = normalizeStep(name, value.steps?.[name]);
+    validateStepRelationships(steps);
     return Object.freeze({
       formatVersion: QUALIFICATION_FORMAT,
       status: QUALIFICATION_STEPS.every((name) => steps[name].status === "PASS") ? "PASS" : "PENDING",
@@ -110,7 +111,12 @@
       return Object.freeze({ status: "PASS", completedAt: normalizeTimestamp(value.completedAt), operationId: optionalText(value.operationId) });
     }
     if (name === "premiereTranscript") {
-      return Object.freeze({ status: "PASS", completedAt: normalizeTimestamp(value.completedAt), segmentCount: positiveInteger(value.segmentCount, "전사 구간 수") });
+      return Object.freeze({
+        status: "PASS",
+        completedAt: normalizeTimestamp(value.completedAt),
+        segmentCount: positiveInteger(value.segmentCount, "전사 구간 수"),
+        fingerprint: transcriptFingerprint(value.fingerprint),
+      });
     }
     if (name === "roughCut") return normalizeRoughCutStep(value);
     if (name === "playback") {
@@ -136,6 +142,7 @@
       operationId: requiredText(value.operationId, "작업 식별자"),
       segmentCount: positiveInteger(value.segmentCount, "러프컷 구간 수"),
       createdSessionId: normalizeSessionId(value.createdSessionId),
+      transcriptFingerprint: transcriptFingerprint(value.transcriptFingerprint),
       createdSnapshot: snapshots.normalizeSequenceSnapshot(value.createdSnapshot),
     };
     if (value.persistenceSnapshot != null) {
@@ -144,6 +151,31 @@
       step.persistenceSnapshot = snapshots.normalizeSequenceSnapshot(value.persistenceSnapshot);
     }
     return Object.freeze(step);
+  }
+
+  function validateStepRelationships(steps) {
+    if (steps.rollbackSelfTest.status === "PASS" && steps.hostSelfTest.status !== "PASS") {
+      throw new Error("롤백 자체시험 기록에 선행 호스트 자체시험이 없습니다.");
+    }
+    if (steps.roughCut.status === "PASS") {
+      if (steps.premiereTranscript.status !== "PASS"
+        || steps.roughCut.transcriptFingerprint !== steps.premiereTranscript.fingerprint) {
+        throw new Error("러프컷과 Premiere 전사문 provenance가 일치하지 않습니다.");
+      }
+    }
+    if (steps.playback.status === "PASS" && steps.roughCut.status !== "PASS") {
+      throw new Error("재생 확인 기록에 선행 러프컷이 없습니다.");
+    }
+    if (steps.roughCut.status === "PASS" && steps.roughCut.persistenceSnapshot) {
+      const required = ["hostSelfTest", "rollbackSelfTest", "premiereTranscript", "playback"];
+      if (!required.every((name) => steps[name].status === "PASS")) {
+        throw new Error("저장 준비 기록에 선행 검증 단계가 누락되었습니다.");
+      }
+    }
+    if (steps.persistence.status === "PASS"
+      && (steps.roughCut.status !== "PASS" || !steps.roughCut.persistenceSnapshot)) {
+      throw new Error("영속 검증 기록에 저장 준비 결과가 없습니다.");
+    }
   }
 
   function normalizeSelection(value) {
@@ -180,6 +212,12 @@
     const number = Number(value);
     if (!Number.isInteger(number) || number <= 0) throw new Error(`${label}가 올바르지 않습니다.`);
     return number;
+  }
+
+  function transcriptFingerprint(value) {
+    const text = String(value == null ? "" : value).trim();
+    if (!/^tx1-\d+-[0-9a-f]{16}$/.test(text)) throw new Error("Premiere 전사문 fingerprint가 올바르지 않습니다.");
+    return text;
   }
 
   function requiredText(value, label) {

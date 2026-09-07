@@ -50,19 +50,45 @@
       return result;
     }
 
-    function recordPremiereTranscript(selection, segmentCount) {
+    function recordPremiereTranscript(selection, segments) {
       if (!record || !PAI.qualificationMatchesSelection(record, selection)) return null;
+      const fingerprint = PAI.transcriptFingerprint(segments);
       record = PAI.recordPremiereTranscript(storage, requireEnvironment(), selection, {
         source: "premiere",
-        segmentCount,
+        segmentCount: segments.length,
+        fingerprint,
       });
       render();
       return record;
     }
 
-    function recordRoughCut(result) {
+    function assertRoughCutTranscript(transcript, segments) {
       if (!matchesCurrentSelection()) return null;
-      record = PAI.recordRoughCut(storage, requireEnvironment(), requireSelection(), result, sessionId);
+      const current = requireActiveQualification();
+      if (current.steps.premiereTranscript.status !== "PASS") {
+        throw new Error("실제 Premiere 전사문을 먼저 불러와 검증하십시오.");
+      }
+      if (transcript?.source !== "premiere") {
+        throw new Error("실제 Premiere 전사문으로 만든 편집안만 qualification 러프컷으로 사용할 수 있습니다.");
+      }
+      const fingerprint = PAI.transcriptFingerprint(segments);
+      if (fingerprint !== current.steps.premiereTranscript.fingerprint) {
+        throw new Error("검증한 Premiere 전사문과 현재 편집안의 전사문이 다릅니다. 다시 불러오십시오.");
+      }
+      return fingerprint;
+    }
+
+    function recordRoughCut(result, transcript, segments) {
+      if (!matchesCurrentSelection()) return null;
+      const fingerprint = assertRoughCutTranscript(transcript, segments);
+      record = PAI.recordRoughCut(
+        storage,
+        requireEnvironment(),
+        requireSelection(),
+        result,
+        sessionId,
+        fingerprint
+      );
       render();
       return record;
     }
@@ -144,6 +170,7 @@
       recordHostSelfTest,
       runRollbackSelfTest,
       recordPremiereTranscript,
+      assertRoughCutTranscript,
       recordRoughCut,
       confirmPlayback,
       preparePersistence,

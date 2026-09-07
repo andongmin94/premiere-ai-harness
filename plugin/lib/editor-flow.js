@@ -44,7 +44,7 @@
       }
       const segments = PAI.parseTranscriptJson(JSON.parse(loaded.json));
       commitTranscript(loaded, { source: "premiere", raw: loaded.json, segments });
-      qualification.recordPremiereTranscript(loaded, segments.length);
+      qualification.recordPremiereTranscript(loaded, segments);
       view.setStatus(`Premiere 전사문 ${segments.length}개 구간을 분석했습니다.`, "success");
       return segments;
     }
@@ -81,6 +81,7 @@
       requireCertified();
       const approval = currentApproval();
       const selection = requireSelection();
+      qualification.assertRoughCutTranscript(session.transcript, session.segments);
       const base = String(selection.clipName || "AI_ROUGH_CUT").replace(/[\\/:*?"<>|]/g, "_");
       const timestamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
       const result = await PAI.createRoughCut(
@@ -92,7 +93,7 @@
           expectedTranscriptJson: session.transcript?.source === "premiere" ? session.transcript.raw : null,
         }
       );
-      qualification.recordRoughCut(result);
+      qualification.recordRoughCut(result, session.transcript, session.segments);
       view.setStatus(`새 시퀀스 “${result.sequenceName}”를 만들었습니다. (${result.segmentCount}구간)`, "success");
       onStateChanged();
       return result;
