@@ -28,9 +28,14 @@
 - 패널 부팅 및 핵심 사용자 흐름 모의시험
 - 복잡도와 coverage 게이트
 - Linux/macOS/Windows 교차 플랫폼 재현 소스 패키징
+- 깨끗한 Git working tree의 exact commit을 CCX manifest에 기록
 - POSIX Info-ZIP 3.0 기반 결정론적 CCX와 안전 경로·중복·암호화·CRC·소스 일치 검사
+- source tree SHA-256·Git commit·CCX SHA-256·실제 Premiere qualification PASS를 하나의 qualification evidence JSON으로 결합
+- qualification evidence 자체 SHA-256과 사후 변조 검증
 
-정확한 소스 검증 결과는 대상 커밋에서 `npm ci`와 `npm run verify`를 실행해 확인합니다. 결정론적 CCX 검증은 같은 커밋을 POSIX Info-ZIP 3.0 환경에서 `npm run verify:distribution`으로 실행하고, 생성된 manifest와 SHA-256 기록을 별도로 보관합니다. 저장소 안에 검증 상태 영수증을 다시 커밋하지 않습니다.
+정확한 소스 검증 결과는 대상 커밋에서 `npm ci`와 `npm run verify`를 실행해 확인합니다. 결정론적 CCX 검증은 깨끗한 같은 커밋을 POSIX Info-ZIP 3.0 환경에서 `npm run verify:distribution`으로 실행하고, 생성된 manifest와 SHA-256 기록을 별도로 보관합니다.
+
+실제 Premiere qualification이 PASS인 경우 패널의 기계 판독용 JSON을 보관한 뒤 `npm run evidence:qualification -- /path/to/qualification.json`으로 source manifest·CCX manifest와 결합합니다. 이 evidence는 실제 Creative Cloud 설치·업데이트·제거 증거를 포함하지 않으므로 `releaseReady`는 항상 `false`이며 저장소 안에 검증 상태 영수증을 다시 커밋하지 않습니다.
 
 ## 남은 실제 Adobe 게이트
 
@@ -41,6 +46,7 @@
 - 서브클립 프레임 경계와 A/V sync
 - 원본 시퀀스와 원본 미디어 불변
 - 프로젝트 저장, Premiere 종료·재실행, 새 패널 세션 구조 확인
+- qualification evidence JSON 생성·보관
 - 같은 ID의 후속 버전 업데이트 설치
 - Creative Cloud Desktop 제거와 잔여 데이터 확인
 

@@ -2,6 +2,7 @@
 
 ## exact 커밋 로컬 게이트
 
+- [ ] Git working tree가 깨끗한 대상 커밋인지 확인
 - [ ] Linux / Windows `npm ci`와 `npm run verify` 성공
 - [ ] 패널 부팅·핵심 흐름 모의시험 성공
 - [ ] 부분 mutation rollback 시험 성공
@@ -9,6 +10,7 @@
 - [ ] coverage와 모듈 복잡도 예산 통과
 - [ ] Linux / Windows source tree SHA-256 일치
 - [ ] 결정론적 CCX 2회 빌드 바이트 일치
+- [ ] CCX manifest의 `sourceCommit`이 대상 Git commit과 일치
 - [ ] CCX manifest 루트, 안전 경로, 중복 없음
 - [ ] 암호화·ZIP data descriptor·숨은 바이트 없음
 - [ ] CCX CRC와 source directory 파일별 바이트 일치
@@ -21,14 +23,21 @@
 - [ ] Premiere Pro 26.3+에서 패널 표시
 - [ ] 일반 원본 클립의 `호스트 자체시험` PASS
 - [ ] `실패 롤백 자체시험` PASS와 내부 자산 0개
-- [ ] 실제 Premiere 전사문 불러오기
+- [ ] 실제 Premiere 전사문 불러오기와 transcript fingerprint 기록
+- [ ] 같은 Premiere transcript fingerprint로 qualification 러프컷 생성
 - [ ] 새 러프컷 생성 및 원본 불변 확인
 - [ ] 프레임 경계와 A/V sync 확인
 - [ ] 프로젝트 저장·구조 기록 성공
 - [ ] Premiere 실제 종료·재실행
 - [ ] 새 패널 세션에서 저장된 시퀀스 구조 동일성 PASS
+- [ ] 패널의 기계 판독용 PASS 기록을 JSON으로 보관
+- [ ] `npm run evidence:qualification -- /path/to/qualification.json` 성공
+- [ ] qualification evidence의 source tree SHA-256·Git commit·CCX SHA-256·host qualification PASS 결합 확인
+- [ ] qualification evidence의 `releaseReady`가 `false`인지 확인
 - [ ] 같은 ID의 후속 버전 업데이트 설치
 - [ ] Creative Cloud Desktop 제거 후 패널 미노출 확인
 - [ ] 프로젝트 결과물 외 플러그인 전용 잔여 데이터 확인
+
+Qualification evidence는 source/CCX/실제 Premiere 검증을 하나의 기계 판독 기록으로 묶지만 Creative Cloud 설치·업데이트·제거를 자동 증명하지 않습니다. 따라서 evidence 생성 성공만으로 Public Beta, Stable, GA 또는 판매판으로 표시하지 않습니다.
 
 전 항목 통과 전에는 판매하거나 Public Beta, Stable, GA로 표시하지 않습니다.

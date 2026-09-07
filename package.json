@@ -15,6 +15,7 @@
     "test:coverage": "node --experimental-test-coverage --test-coverage-lines=90 --test-coverage-functions=90 --test-coverage-branches=70 --test test/*.test.js",
     "package": "node scripts/package-plugin.mjs",
     "package:ccx": "node scripts/build-ccx.mjs",
+    "evidence:qualification": "node scripts/build-qualification-evidence.mjs",
     "test:package": "node scripts/test-package.mjs",
     "test:ccx": "node scripts/test-ccx.mjs",
     "verify": "npm run check && npm run complexity && npm run test:coverage && npm run package && npm run test:package",

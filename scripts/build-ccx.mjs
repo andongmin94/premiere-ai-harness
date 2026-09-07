@@ -12,6 +12,7 @@ const FIXED_TIME = new Date("1980-01-01T00:00:00.000Z");
 export function buildCcx(options = {}) {
   assert(process.platform !== "win32", "deterministic CCX packaging requires POSIX Info-ZIP 3.0; run npm run verify on Windows and build the repository CCX candidate on a POSIX host");
   assertInfoZip();
+  const sourceCommit = resolveSourceCommit(options.sourceCommit);
 
   const source = packagePlugin(options.sourceDirectory);
   const outputFile = path.resolve(options.outputFile || defaultOutputFile(source.version));
@@ -40,7 +41,7 @@ export function buildCcx(options = {}) {
       pluginId: readJson(path.join(source.outputDirectory, "manifest.json")).id,
       version: source.version,
       host: "premierepro",
-      sourceCommit: String(options.sourceCommit || process.env.GITHUB_SHA || "unverified-local"),
+      sourceCommit,
       sourceTreeSha256: source.treeSha256,
       file: path.basename(outputFile),
       bytes: inspected.bytes,
@@ -69,6 +70,23 @@ export function buildCcx(options = {}) {
   } finally {
     fs.rmSync(stage, { recursive: true, force: true });
   }
+}
+
+function resolveSourceCommit(explicit) {
+  if (explicit != null) {
+    const value = String(explicit).trim();
+    assert(value, "sourceCommit may not be empty");
+    return value;
+  }
+  const status = spawnSync("git", ["status", "--porcelain", "--untracked-files=all"], { cwd: root, encoding: "utf8" });
+  if (status.error) throw status.error;
+  assert(status.status === 0, "git status failed while preparing deterministic CCX");
+  assert(!String(status.stdout || "").trim(), "deterministic CCX requires a clean git working tree");
+  const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" });
+  if (head.error) throw head.error;
+  const commit = String(head.stdout || "").trim();
+  assert(head.status === 0 && /^[0-9a-f]{40}$/i.test(commit), "could not resolve the exact git commit for deterministic CCX");
+  return commit.toLowerCase();
 }
 
 function defaultOutputFile(version) {
