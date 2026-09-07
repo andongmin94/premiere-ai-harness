@@ -29,7 +29,7 @@ npm run evidence:init-distribution -- \
   /outside/repository/pai-0.5.1-distribution-verification
 ```
 
-두 번째 인자는 동일 plugin ID로 업데이트 시험할 이전 버전입니다. 현재 후보와 다른 semver여야 합니다. 마지막 인자는 반드시 저장소 바깥의 비어 있는 경로여야 하며, 기존 파일이 있으면 초기화기는 덮어쓰지 않습니다.
+두 번째 인자는 동일 plugin ID로 업데이트 시험할 이전 버전입니다. 현재 후보보다 낮은 semver여야 합니다. 마지막 인자는 반드시 저장소 바깥의 비어 있는 경로여야 하며, 기존 파일이 있으면 초기화기는 덮어쓰지 않습니다.
 
 생성 결과:
 
@@ -106,7 +106,7 @@ pai-0.5.1-distribution-verification/
 }
 ```
 
-`update.fromVersion`은 현재 후보와 다른 semver여야 하고 `update.toVersion`은 현재 후보 버전이어야 합니다. 즉 동일 plugin ID의 이전 시험 버전에서 현재 후보로 실제 업데이트 설치를 확인합니다.
+`update.fromVersion`은 현재 후보보다 낮은 semver여야 하고 `update.toVersion`은 현재 후보 버전이어야 합니다. 즉 동일 plugin ID의 이전 시험 버전에서 현재 후보로 실제 업데이트 설치를 확인합니다. 같은 버전 재설치나 더 높은 버전에서 현재 후보로 내려오는 downgrade는 update PASS로 인정하지 않습니다.
 
 각 단계는 증거 파일이 최소 1개 필요합니다. 파일 종류는 제한하지 않지만 일반 파일이어야 하며 파일당 50 MiB 이하, 단계당 최대 20개입니다. 최종 evidence에는 원본 파일을 복제하지 않고 상대 파일명·바이트 수·SHA-256만 기록합니다.
 
