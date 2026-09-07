@@ -124,10 +124,11 @@
     try {
       const frameRateObject = ppro.FrameRate.createWithValue(timing.frameRate);
       if (!frameRateObject) throw new Error("Premiere 프레임레이트 객체를 만들지 못했습니다.");
+      const sourceState = await assets.captureSourceState(context.clip, ppro, timing.frameRate);
       await assets.createGeneratedBin(resources, ppro, settings);
       await assets.createSubclips(resources.project, context.clip, ranges, resources.subclipNames, frameRateObject, ppro);
       resources.subclips = await assets.waitForNamedClips(resources.parentBin, resources.subclipNames, ppro, settings);
-      await assets.verifySubclipBoundaries(resources.subclips, ranges, ppro, timing.frameRate);
+      await assets.verifyGeneratedSubclips(context.clip, resources.subclips, ranges, sourceState, ppro, timing.frameRate);
       await assets.moveItems(resources.project, resources.parentBin, resources.runBin, resources.subclips);
       await assets.waitForNamedClips(resources.runBin, resources.subclipNames, ppro, settings);
       failureObserved = true;
@@ -217,10 +218,11 @@
   async function buildGeneratedSequence(ppro, sourceClip, ranges, resources, options) {
     const frameRateObject = ppro.FrameRate.createWithValue(options.frameRate);
     if (!frameRateObject) throw new Error("Premiere 프레임레이트 객체를 만들지 못했습니다.");
+    const sourceState = await assets.captureSourceState(sourceClip, ppro, options.frameRate);
     await assets.createGeneratedBin(resources, ppro, options);
     await assets.createSubclips(resources.project, sourceClip, ranges, resources.subclipNames, frameRateObject, ppro);
     resources.subclips = await assets.waitForNamedClips(resources.parentBin, resources.subclipNames, ppro, options);
-    await assets.verifySubclipBoundaries(resources.subclips, ranges, ppro, options.frameRate);
+    await assets.verifyGeneratedSubclips(sourceClip, resources.subclips, ranges, sourceState, ppro, options.frameRate);
     await assets.moveItems(resources.project, resources.parentBin, resources.runBin, resources.subclips);
     await assets.waitForNamedClips(resources.runBin, resources.subclipNames, ppro, options);
     resources.sequence = await assets.createAndActivateSequence(resources, resources.subclips, resources.runBin);
