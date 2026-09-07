@@ -26,7 +26,7 @@ npm ci
 npm run verify
 ```
 
-결정론적 설치 후보 CCX 생성과 CCX 내부 검증은 **POSIX 환경의 Info-ZIP 3.0**을 요구합니다.
+결정론적 설치 후보 CCX 생성과 CCX 내부 검증은 **POSIX 환경의 Info-ZIP 3.0**을 요구합니다. CCX에 정확한 Git commit을 기록하기 위해 working tree가 깨끗해야 합니다.
 
 ```bash
 npm run verify:distribution
@@ -48,10 +48,28 @@ dist/PremiereAIHarness-Core-0.5.1-premierepro.ccx.manifest.json
 
 `.ccx`는 manifest를 루트에 둔 ZIP 설치 후보입니다. **Creative Cloud Desktop 실제 설치·업데이트·제거와 실제 Premiere 검증을 아직 통과하지 않았으므로 배포판이나 판매판으로 취급하지 않습니다.** 일반 패키징에는 Adobe UXP Developer Tool의 Package 기능을 사용할 수 있습니다.
 
+## Qualification evidence
+
+실제 Premiere 검증이 `PASS`가 되면 패널의 기계 판독용 검증 기록을 JSON 파일로 보관합니다. 그 파일을 같은 커밋에서 만든 source manifest·CCX manifest와 결합할 수 있습니다.
+
+```bash
+npm run evidence:qualification -- /path/to/qualification.json
+```
+
+기본 입력은 현재 버전의 `dist/*-uxp-source.manifest.json`과 `dist/*-premierepro.ccx.manifest.json`입니다. 결과는 다음 파일입니다.
+
+```text
+dist/PremiereAIHarness-Core-0.5.1-qualification-evidence.json
+```
+
+이 evidence는 source tree SHA-256, exact Git commit, CCX SHA-256, 호스트 환경 fingerprint, Premiere transcript fingerprint, persistence PASS 기록을 하나로 묶고 자체 SHA-256을 갖습니다. 프로젝트·클립 이름이나 원문 transcript를 별도로 복제하지 않습니다.
+
+이 파일은 **qualification evidence candidate**일 뿐이며 `releaseReady`는 항상 `false`입니다. Creative Cloud 실제 설치·업데이트·제거 증거는 별도 실제 Adobe 게이트이므로 이 파일만으로 판매판이나 GA를 주장하지 않습니다.
+
 ## 실제 호스트·설치 검증 흐름
 
 ```text
-검증 대상 커밋과 로컬 source tree SHA-256·CCX SHA-256 기록
+깨끗한 검증 대상 커밋에서 source tree SHA-256·CCX SHA-256·Git commit 기록
 → Creative Cloud Desktop으로 설치
 → Premiere에서 패널 열기
 → 원본 검사 및 실제 Premiere 검증 시작
@@ -62,6 +80,7 @@ dist/PremiereAIHarness-Core-0.5.1-premierepro.ccx.manifest.json
 → A/V 싱크·원본 불변 확인
 → 프로젝트 저장과 시퀀스 구조 기록
 → Premiere 또는 패널을 다시 열어 새 패널 세션에서 구조 동일성 확인
+→ qualification evidence JSON 생성·보관
 → 업데이트 설치와 제거 확인
 ```
 
