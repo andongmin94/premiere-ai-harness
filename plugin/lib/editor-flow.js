@@ -2,9 +2,9 @@
   if (typeof module === "object" && module.exports && typeof window === "undefined") {
     module.exports = factory(Object.assign(
       {},
-      require("./session-state.js"),
       require("./transcript.js"),
       require("./planner.js"),
+      require("./session-state.js"),
       require("./premiere-adapter.js")
     ));
   } else {
@@ -18,11 +18,14 @@
     const view = dependencies.view;
     const qualification = dependencies.qualification;
     const getPpro = dependencies.getPpro;
-    const getCertified = dependencies.getCertified;
-    const onStateChanged = dependencies.onStateChanged;
+    const requireCertified = dependencies.requireCertified;
+    const onStateChanged = typeof dependencies.onStateChanged === "function"
+      ? dependencies.onStateChanged
+      : function () {};
 
     async function inspectSelection() {
       const selection = await PAI.inspectSelection(getPpro());
+      PAI.resetAnalysis(session);
       PAI.setSelection(session, selection);
       view.byId("transcript-input").value = "";
       view.setSelection(session.selection);
@@ -58,28 +61,20 @@
       return segments;
     }
 
-    function commitTranscript(selection, value) {
-      if (!PAI.sameSelection(session.selection, selection)) throw new Error("분석 중 선택 클립이 바뀌었습니다.");
-      PAI.setTranscript(session, value);
-      planCurrentTranscript();
-      onStateChanged();
-    }
-
-    function planCurrentTranscript() {
-      const selection = requireSelection();
-      const preset = String(view.byId("preset").value || "balanced");
-      const plan = PAI.planEdits(session.segments, selection.duration, preset);
-      PAI.setPlan(session, plan);
-      view.renderPlan(plan, handleCandidateChange);
-      return plan;
-    }
-
-    function handleCandidateChange() {
-      if (!session.plan) return;
-      const selectedIds = view.checkedCandidateIds();
-      PAI.setPlan(session, PAI.updateSelectedCandidates(session.plan, selectedIds));
-      view.renderPlan(session.plan, handleCandidateChange);
-      onStateChanged();
+    function rebuildPlan() {
+      if (!session.transcript || session.segments.length === 0) return null;
+      try {
+        const plan = createPlan(session.selection, session.segments);
+        PAI.setPlan(session, plan);
+        renderPlan();
+        return plan;
+      } catch (error) {
+        PAI.clearPlan(session);
+        view.renderPlan(null, handleCandidateChange);
+        view.setStatus(messageOf(error), "error");
+        onStateChanged();
+        return null;
+      }
     }
 
     async function applyRoughCut() {
@@ -104,10 +99,60 @@
       return result;
     }
 
+    function controlState(certified) {
+      let approvalValid = false;
+      if (session.plan) {
+        try {
+          currentApproval();
+          approvalValid = true;
+        } catch (_) {
+          approvalValid = false;
+        }
+      }
+      return {
+        hasSelection: Boolean(session.selection),
+        hasPlan: Boolean(session.plan),
+        canApply: PAI.canApply(session, certified === true) && approvalValid,
+      };
+    }
+
+    function commitTranscript(selection, transcript) {
+      const plan = createPlan(selection, transcript.segments);
+      PAI.setSelection(session, selection);
+      PAI.setTranscript(session, transcript);
+      PAI.setPlan(session, plan);
+      view.setSelection(session.selection);
+      renderPlan();
+    }
+
+    function createPlan(selection, segments) {
+      return PAI.createEditPlan(segments, {
+        preset: view.byId("preset").value,
+        duration: selection.duration,
+      });
+    }
+
+    function renderPlan() {
+      view.renderPlan(session.plan, handleCandidateChange);
+      handleCandidateChange();
+    }
+
+    function handleCandidateChange() {
+      if (!session.plan) {
+        onStateChanged();
+        return;
+      }
+      try {
+        view.setPlanStats(currentApproval(), null);
+      } catch (error) {
+        view.setPlanStats(null, error);
+      }
+      onStateChanged();
+    }
+
     function currentApproval() {
-      const selection = requireSelection();
       if (!session.plan) throw new Error("먼저 전사문을 분석하십시오.");
-      return PAI.buildApproval(session.plan, selection.duration);
+      return PAI.approveCandidates(session.plan, view.selectedCandidateIds());
     }
 
     function requireSelection() {
@@ -115,20 +160,19 @@
       return session.selection;
     }
 
-    function requireCertified() {
-      if (!getCertified()) throw new Error("현재 환경에서 호스트 자체시험을 먼저 통과하십시오.");
-    }
-
     return {
       inspectSelection,
       loadPremiereTranscript,
       analyzePastedTranscript,
-      planCurrentTranscript,
-      handleCandidateChange,
+      rebuildPlan,
       applyRoughCut,
+      controlState,
       currentApproval,
+      renderPlan,
     };
   }
+
+  function messageOf(error) { return String(error?.message || error); }
 
   return { createEditorFlow };
 });
