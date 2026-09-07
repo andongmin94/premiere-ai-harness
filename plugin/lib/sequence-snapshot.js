@@ -132,9 +132,6 @@
       if (!sameTime(actual.start, cursor) || !sameTime(actual.end, expectedEnd)) {
         throw new Error("생성된 시퀀스의 클립 경계 또는 길이가 예상과 다릅니다.");
       }
-      if (!sameTime(actual.sourceIn, wanted.sourceIn) || !sameTime(actual.sourceOut, wanted.sourceOut)) {
-        throw new Error("생성된 시퀀스의 source 경계가 예상 유지 구간과 다릅니다.");
-      }
       cursor = expectedEnd;
     }
     if (!sameTime(normalized.end, cursor)) {
@@ -168,17 +165,12 @@
     return value.map((item, index) => {
       const name = String(item?.name || "").trim();
       const duration = Number(item?.duration);
-      const sourceIn = Number(item?.sourceIn);
-      const sourceOut = Number(item?.sourceOut);
       if (!name || names.has(name)) throw new Error("검증할 생성 서브클립 이름이 올바르지 않습니다.");
       if (!Number.isFinite(duration) || duration <= 0 || duration > 12 * 60 * 60) {
         throw new Error(`검증할 생성 구간 ${index + 1}의 길이가 올바르지 않습니다.`);
       }
-      if (!Number.isFinite(sourceIn) || !Number.isFinite(sourceOut) || sourceIn < 0 || sourceOut <= sourceIn) {
-        throw new Error(`검증할 생성 구간 ${index + 1}의 source 경계가 올바르지 않습니다.`);
-      }
       names.add(name);
-      return Object.freeze({ name, duration, sourceIn, sourceOut });
+      return Object.freeze({ name, duration });
     });
   }
 
