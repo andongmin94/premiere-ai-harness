@@ -47,13 +47,21 @@ function makeFolder(name, parent, context, options) {
 
 function makeFixture(inputOptions = {}) {
   const options = Object.assign({ hideGeneratedBinReads: 0 }, inputOptions);
-  const context = { locked: false, parent: null, nextClipId: 1 };
+  const context = { locked: false, parent: null, nextClipId: 1, sourceMutationApplied: false };
   const root = makeFolder("Root", null, context, options);
   const parent = makeFolder("Footage", root, context, options);
   context.parent = parent;
   root.items.push(parent);
   const fps = options.fps || 25;
   const duration = options.duration || 10;
+  const mediaPath = options.mediaPath || "C:/media/camera.mp4";
+  const totalFrames = Math.floor(duration * fps + 1e-7);
+  const sourceBounds = {
+    videoIn: finiteOr(options.sourceVideoInFrame, 0),
+    videoOut: finiteOr(options.sourceVideoOutFrame, totalFrames),
+    audioIn: finiteOr(options.sourceAudioInFrame, 0),
+    audioOut: finiteOr(options.sourceAudioOutFrame, totalFrames),
+  };
   const source = {
     kind: "clip",
     name: options.clipName || "camera.mp4",
@@ -65,6 +73,9 @@ function makeFixture(inputOptions = {}) {
     async isSequence() { return Boolean(options.sequence); },
     async isMergedClip() { return Boolean(options.merged); },
     async isMulticamClip() { return Boolean(options.multicam); },
+    async getMediaFilePath() { return mediaPath; },
+    async getInPoint(mediaType) { return tick(sourceFrame(sourceBounds, mediaType, "In") / fps); },
+    async getOutPoint(mediaType) { return tick(sourceFrame(sourceBounds, mediaType, "Out") / fps); },
     async getMedia() {
       const value = { seconds: duration };
       return { duration: options.syncDuration ? value : Promise.resolve(value) };
@@ -85,6 +96,7 @@ function makeFixture(inputOptions = {}) {
           mediaOptions,
           getId() { return this.id; },
           getParentBin() { return this.parent; },
+          async getMediaFilePath() { return options.subclipMediaPath || mediaPath; },
         };
         if (!options.missingSubclipBoundaryApi) {
           clip.getInPoint = async function (mediaType) {
@@ -95,9 +107,15 @@ function makeFixture(inputOptions = {}) {
           };
         }
         parent.items.push(clip);
+        applySourceMutationOnce(sourceBounds, context, options);
       });
     },
   };
+  if (options.missingSourceMediaPathApi) delete source.getMediaFilePath;
+  if (options.missingSourceBoundaryApi) {
+    delete source.getInPoint;
+    delete source.getOutPoint;
+  }
   parent.items.push(source);
 
   function makeTrackItem(projectItem, start, end) {
@@ -240,6 +258,34 @@ function boundaryOffset(options, mediaType, side) {
   if (Number.isFinite(specific)) return specific;
   const generic = Number(options[`subclip${side}OffsetFrames`]);
   return Number.isFinite(generic) ? generic : 0;
+}
+
+function sourceFrame(bounds, mediaType, side) {
+  const media = mediaType === "audio" ? "audio" : "video";
+  return bounds[`${media}${side}`];
+}
+
+function applySourceMutationOnce(bounds, context, options) {
+  if (context.sourceMutationApplied) return;
+  const changes = [
+    ["videoIn", options.mutateSourceVideoInFrames],
+    ["videoOut", options.mutateSourceVideoOutFrames],
+    ["audioIn", options.mutateSourceAudioInFrames],
+    ["audioOut", options.mutateSourceAudioOutFrames],
+  ];
+  let changed = false;
+  for (const [key, raw] of changes) {
+    const delta = Number(raw);
+    if (!Number.isFinite(delta) || delta === 0) continue;
+    bounds[key] += delta;
+    changed = true;
+  }
+  if (changed) context.sourceMutationApplied = true;
+}
+
+function finiteOr(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
 }
 
 module.exports = { makeFixture, makeFolder };
