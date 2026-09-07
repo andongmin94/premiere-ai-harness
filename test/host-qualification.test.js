@@ -75,9 +75,11 @@ function makeSnapshot(ids = ["subclip-1", "subclip-2", "subclip-3"]) {
     projectItemName: `clip-${index + 1}`,
     start: index,
     end: index + 1,
+    sourceIn: index,
+    sourceOut: index + 1,
   }));
   return {
-    formatVersion: 1,
+    formatVersion: 2,
     end: ids.length,
     videoTracks: [{ index: 0, items }],
     audioTracks: [{ index: 0, items }],
