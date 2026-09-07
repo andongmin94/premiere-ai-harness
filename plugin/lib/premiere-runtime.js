@@ -66,8 +66,8 @@
     if (!expected) return;
     const actualProjectId = projectIdentity(project);
     const actualClipId = clipIdentity(clip);
-    if (expected.projectId && actualProjectId && String(expected.projectId) !== actualProjectId) throw new Error("편집안을 만든 프로젝트가 바뀌었습니다. 다시 분석하십시오.");
-    if (expected.clipId && actualClipId && String(expected.clipId) !== actualClipId) throw new Error("편집안을 만든 뒤 선택한 원본 클립이 바뀌었습니다. 다시 분석하십시오.");
+    if (expected.projectId && String(expected.projectId) !== actualProjectId) throw new Error("편집안을 만든 프로젝트가 바뀌었습니다. 다시 분석하십시오.");
+    if (expected.clipId && String(expected.clipId) !== actualClipId) throw new Error("편집안을 만든 뒤 선택한 원본 클립이 바뀌었습니다. 다시 분석하십시오.");
     if (Number.isFinite(expected.duration) && Math.abs(Number(expected.duration) - timing.duration) > 0.002) throw new Error("편집안을 만든 뒤 원본 길이가 달라졌습니다. 다시 분석하십시오.");
     if (Number.isFinite(expected.frameRate) && Math.abs(Number(expected.frameRate) - timing.frameRate) > 0.0001) throw new Error("편집안을 만든 뒤 원본 프레임레이트가 달라졌습니다. 다시 분석하십시오.");
   }
