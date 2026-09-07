@@ -41,7 +41,8 @@
     }
 
     async function runRollbackSelfTest() {
-      requireActiveQualification();
+      const current = requireActiveQualification();
+      if (current.steps.hostSelfTest.status !== "PASS") throw new Error("현재 원본의 호스트 자체시험을 먼저 통과하십시오.");
       const selection = requireSelection();
       const result = await PAI.runRollbackSelfTest(getPpro(), { expectedSource: selection });
       record = PAI.recordRollbackSelfTest(storage, requireEnvironment(), selection, result);
