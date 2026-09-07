@@ -153,8 +153,8 @@ function checkAdobeContract(text) {
     "TrackItem.getEndTime": "getEndTime",
     "TrackItem.getProjectItem": "getProjectItem",
     "Constants.TrackItemType.CLIP": "TrackItemType?.CLIP",
-    "Constants.MediaType.VIDEO": "MediaType?.VIDEO",
-    "Constants.MediaType.AUDIO": "MediaType?.AUDIO",
+    "Constants.MediaType.VIDEO": "mediaTypes?.VIDEO",
+    "Constants.MediaType.AUDIO": "mediaTypes?.AUDIO",
     "CompoundAction.addAction": "addAction",
   };
   for (const [name, token] of Object.entries(requiredTokens)) {
