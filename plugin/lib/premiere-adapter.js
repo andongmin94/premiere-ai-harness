@@ -122,8 +122,7 @@
     const previousActive = await readActiveSequence(context.project);
     let failureObserved = false;
     try {
-      const frameRateObject = ppro.FrameRate.createWithValue(timing.frameRate);
-      if (!frameRateObject) throw new Error("Premiere 프레임레이트 객체를 만들지 못했습니다.");
+      const frameRateObject = ppro.FrameRate.createWithValue(timing.frameRate); if (!frameRateObject) throw new Error("Premiere 프레임레이트 객체를 만들지 못했습니다.");
       const sourceState = await assets.captureSourceState(context.clip, ppro, timing.frameRate);
       await assets.createGeneratedBin(resources, ppro, settings);
       await assets.createSubclips(resources.project, context.clip, ranges, resources.subclipNames, frameRateObject, ppro);
@@ -217,8 +216,7 @@
   }
 
   async function buildGeneratedSequence(ppro, sourceClip, ranges, resources, options) {
-    const frameRateObject = ppro.FrameRate.createWithValue(options.frameRate);
-    if (!frameRateObject) throw new Error("Premiere 프레임레이트 객체를 만들지 못했습니다.");
+    const frameRateObject = ppro.FrameRate.createWithValue(options.frameRate); if (!frameRateObject) throw new Error("Premiere 프레임레이트 객체를 만들지 못했습니다.");
     const sourceState = await assets.captureSourceState(sourceClip, ppro, options.frameRate);
     await assets.createGeneratedBin(resources, ppro, options);
     await assets.createSubclips(resources.project, sourceClip, ranges, resources.subclipNames, frameRateObject, ppro);
