@@ -143,6 +143,10 @@
       if (!sameTime(actual.start, cursor) || !sameTime(actual.end, expectedEnd)) {
         throw new Error("생성된 시퀀스의 클립 경계 또는 길이가 예상과 다릅니다.");
       }
+      if (!sameTime(actual.projectSourceOut - actual.projectSourceIn, wanted.duration)
+        || !sameTime(actual.trackSourceIn, 0) || !sameTime(actual.trackSourceOut, wanted.duration)) {
+        throw new Error("생성된 시퀀스의 source 범위가 예상 유지 구간과 다릅니다.");
+      }
       cursor = expectedEnd;
     }
     if (!sameTime(normalized.end, cursor)) {
