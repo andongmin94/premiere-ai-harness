@@ -19,6 +19,8 @@
 - 붙여넣은 전사문 또는 변경된 Premiere 전사문으로 qualification 러프컷을 우회하는 경로 차단
 - 저장된 qualification 단계 간 transcript·roughCut·playback·persistence 불변조건 재검증
 - 프레임 안쪽 정렬과 사라지는 유지 구간 차단
+- 생성된 각 서브클립의 VIDEO·AUDIO source in/out을 다시 읽어 요청한 원본 start/end 프레임과 독립 대조
+- source in/out 불일치 또는 boundary API 부재 시 시퀀스 생성 전 fail-closed 및 생성 자산 롤백
 - 생성 시퀀스의 종료 시간·트랙·클립 순서·A/V 경계 검증
 - 부분 mutation 뒤 이번 작업의 시퀀스·빈·서브클립 롤백
 - 동일 이름의 기존 사용자 시퀀스 보존
@@ -52,9 +54,9 @@ Creative Cloud Desktop에서 exact CCX 설치, 동일 plugin ID의 이전 시험
 
 - Creative Cloud Desktop에서 exact CCX 설치
 - Premiere Pro 26.3+ 패널 로드
-- 실제 클립의 호스트·롤백 자체시험
+- 실제 클립의 호스트·롤백 자체시험에서 VIDEO·AUDIO source in/out 프레임 대조 PASS
 - 실제 Premiere transcript export와 fingerprint 결합 확인
-- 서브클립 프레임 경계와 A/V sync
+- 서브클립 프레임 경계와 A/V sync 직접 재생 확인
 - 원본 시퀀스와 원본 미디어 불변
 - 프로젝트 저장, Premiere 종료·재실행, 새 패널 세션 구조 확인
 - qualification evidence JSON 생성·보관
