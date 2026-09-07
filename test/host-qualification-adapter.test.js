@@ -7,14 +7,51 @@ const { makeFixture } = require("./premiere-fixture.js");
 
 const fast = { delay: async () => {}, timeoutMs: 300 };
 
+function expectedSource() {
+  return { projectId: "project-guid", clipId: "clip-1", duration: 10, frameRate: 25 };
+}
+
 test("rollback self-test observes an intentional failure and leaves no internal assets", async () => {
   const fixture = makeFixture();
-  const result = await adapter.runRollbackSelfTest(fixture.ppro, fast);
+  const result = await adapter.runRollbackSelfTest(fixture.ppro, { ...fast, expectedSource: expectedSource() });
   assert.equal(result.status, "PASS");
   assert.equal(result.cleaned, true);
+  assert.deepEqual(
+    { projectId: result.projectId, clipId: result.clipId, duration: result.duration, frameRate: result.frameRate },
+    expectedSource()
+  );
   assert.deepEqual(result.checks, { failureObserved: true, subclip: true, cleanup: true });
   assert.equal(fixture.project.sequences.length, 0);
   assert.equal(fixture.parent.items.some((item) => String(item.name).startsWith("PAI_INTERNAL_")), false);
+});
+
+test("host and rollback self-tests reject a stale source before any mutation", async () => {
+  for (const run of [adapter.runHostSelfTest, adapter.runRollbackSelfTest]) {
+    const fixture = makeFixture();
+    fixture.source.id = "clip-2";
+    await assert.rejects(() => run(fixture.ppro, { ...fast, expectedSource: expectedSource() }), /원본 클립이 바뀌었습니다/);
+    assert.equal(fixture.project.transactions.length, 0);
+    assert.equal(fixture.project.sequences.length, 0);
+    assert.equal(fixture.parent.items.some((item) => String(item.name).startsWith("PAI_INTERNAL_")), false);
+  }
+});
+
+test("self-tests fail closed when an expected host identity disappears", async () => {
+  const missingClip = makeFixture();
+  missingClip.source.id = "";
+  await assert.rejects(
+    () => adapter.runHostSelfTest(missingClip.ppro, { ...fast, expectedSource: expectedSource() }),
+    /원본 클립이 바뀌었습니다/
+  );
+  assert.equal(missingClip.project.transactions.length, 0);
+
+  const missingProject = makeFixture();
+  missingProject.project.guid = "";
+  await assert.rejects(
+    () => adapter.runRollbackSelfTest(missingProject.ppro, { ...fast, expectedSource: expectedSource() }),
+    /프로젝트가 바뀌었습니다/
+  );
+  assert.equal(missingProject.project.transactions.length, 0);
 });
 
 test("rollback self-test refuses PASS when a foreign item prevents complete cleanup", async () => {

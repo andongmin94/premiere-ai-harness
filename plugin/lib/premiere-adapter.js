@@ -71,6 +71,7 @@
     const settings = options || {};
     const context = await getSupportedContext(ppro);
     const timing = await runtime.readSourceTiming(context.clip);
+    runtime.verifyExpectedSource(context.project, context.clip, timing, settings.expectedSource);
     const ranges = selfTestRange(timing.duration, timing.frameRate);
     const parentBin = await runtime.maybePromise(context.clip.getParentBin());
     if (!parentBin) throw new Error("선택 클립의 프로젝트 빈을 찾지 못했습니다.");
@@ -88,12 +89,8 @@
       const cleanupResult = await cleanupApi.cleanupGenerated(resources, cleanupOptions(settings, previousActive));
       if (!cleanupResult.cleaned) throw new Error(`자체시험 흔적 정리에 실패했습니다: ${cleanupResult.errors.join(" / ")}`);
       return Object.freeze({
-        status: "PASS",
-        cleaned: true,
-        operationId,
-        clipId: runtime.clipIdentity(context.clip),
-        duration: timing.duration,
-        frameRate: timing.frameRate,
+        status: "PASS", cleaned: true, operationId,
+        projectId: runtime.projectIdentity(context.project), clipId: runtime.clipIdentity(context.clip), duration: timing.duration, frameRate: timing.frameRate,
         checks: Object.freeze({ subclip: true, sequence: true, activation: true, cleanup: true }),
       });
     } catch (error) {
@@ -105,6 +102,7 @@
     const settings = options || {};
     const context = await getSupportedContext(ppro);
     const timing = await runtime.readSourceTiming(context.clip);
+    runtime.verifyExpectedSource(context.project, context.clip, timing, settings.expectedSource);
     const ranges = selfTestRange(timing.duration, timing.frameRate);
     const parentBin = await runtime.maybePromise(context.clip.getParentBin());
     if (!parentBin) throw new Error("선택 클립의 프로젝트 빈을 찾지 못했습니다.");
@@ -142,9 +140,8 @@
       }
       if (!failureObserved || error?.code !== ROLLBACK_PROBE_CODE) throw error;
       return Object.freeze({
-        status: "PASS",
-        cleaned: true,
-        operationId,
+        status: "PASS", cleaned: true, operationId,
+        projectId: runtime.projectIdentity(context.project), clipId: runtime.clipIdentity(context.clip), duration: timing.duration, frameRate: timing.frameRate,
         checks: Object.freeze({ failureObserved: true, subclip: true, cleanup: true }),
       });
     }

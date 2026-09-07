@@ -33,6 +33,7 @@
       || !["subclip", "sequence", "activation", "cleanup"].every((name) => checks[name] === true)) {
       throw new Error("정리까지 완료된 호스트 자체시험 PASS 결과가 필요합니다.");
     }
+    requireSameSourceResult(selection, result);
     return records.updateQualificationStep(storage, environment, selection, "hostSelfTest", {
       status: "PASS",
       completedAt,
@@ -41,10 +42,15 @@
   }
 
   function recordRollbackSelfTest(storage, environment, selection, result, completedAt) {
+    const current = records.requireQualificationRecord(storage, environment, selection);
+    if (current.steps.hostSelfTest.status !== "PASS") {
+      throw new Error("현재 원본의 호스트 자체시험을 먼저 통과하십시오.");
+    }
     if (result?.status !== "PASS" || result?.cleaned !== true
       || result?.checks?.failureObserved !== true || result?.checks?.cleanup !== true) {
       throw new Error("의도된 실패와 정리를 모두 확인한 롤백 자체시험 PASS 결과가 필요합니다.");
     }
+    requireSameSourceResult(selection, result);
     return records.updateQualificationStep(storage, environment, selection, "rollbackSelfTest", {
       status: "PASS",
       completedAt,
@@ -93,7 +99,7 @@
 
   function recordPersistencePreparation(storage, environment, sessionId, preparation, completedAt) {
     const current = records.requireQualificationRecord(storage, environment);
-    if (!canPreparePersistence(current)) throw new Error("러프컷 재생 확인을 먼저 완료하십시오.");
+    if (!canPreparePersistence(current)) throw new Error("프로젝트 저장 전 검증 단계를 모두 완료하십시오.");
     if (preparation?.status !== "PASS") throw new Error("프로젝트 저장과 시퀀스 구조 기록을 완료하지 못했습니다.");
     const roughCut = current.steps.roughCut;
     requireSameRoughCut(roughCut, preparation);
@@ -130,8 +136,8 @@
   }
 
   function canPreparePersistence(record) {
-    return Boolean(record?.steps?.roughCut?.status === "PASS"
-      && record?.steps?.playback?.status === "PASS"
+    const required = ["hostSelfTest", "rollbackSelfTest", "premiereTranscript", "roughCut", "playback"];
+    return Boolean(record && required.every((name) => record.steps?.[name]?.status === "PASS")
       && !record.steps.roughCut.persistenceSnapshot);
   }
 
@@ -158,6 +164,22 @@
 
   function qualificationReport(record) {
     return record ? `${JSON.stringify(record, null, 2)}\n` : "";
+  }
+
+  function requireSameSourceResult(selection, result) {
+    if (String(result?.projectId || "") !== String(selection?.projectId || "")) {
+      throw new Error("자체시험을 실행한 Premiere 프로젝트가 검증 대상과 다릅니다.");
+    }
+    if (String(result?.clipId || "") !== String(selection?.clipId || "")) {
+      throw new Error("자체시험을 실행한 원본 클립이 검증 대상과 다릅니다.");
+    }
+    const duration = Number(result?.duration);
+    const frameRate = Number(result?.frameRate);
+    if (!Number.isFinite(duration) || !Number.isFinite(frameRate)
+      || Math.abs(duration - Number(selection?.duration)) > 0.002
+      || Math.abs(frameRate - Number(selection?.frameRate)) > 0.0001) {
+      throw new Error("자체시험을 실행한 원본의 길이 또는 프레임레이트가 검증 대상과 다릅니다.");
+    }
   }
 
   function requireSameRoughCut(expected, actual) {

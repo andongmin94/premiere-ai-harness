@@ -116,7 +116,7 @@
       return withBusy(async function () {
         if (!session.selection) throw new Error("먼저 선택 클립을 검사하십시오.");
         if (!hostEnvironment) throw new Error("Premiere 호스트 정보를 읽지 못했습니다.");
-        const result = await PAI.runHostSelfTest(getPpro());
+        const result = await PAI.runHostSelfTest(getPpro(), { expectedSource: session.selection });
         certification = PAI.writeCertification(storage, hostEnvironment, result);
         qualification.recordHostSelfTest(result);
         renderHost();

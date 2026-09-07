@@ -41,9 +41,11 @@
     }
 
     async function runRollbackSelfTest() {
-      requireActiveQualification();
-      const result = await PAI.runRollbackSelfTest(getPpro());
-      record = PAI.recordRollbackSelfTest(storage, requireEnvironment(), requireSelection(), result);
+      const current = requireActiveQualification();
+      if (current.steps.hostSelfTest.status !== "PASS") throw new Error("현재 원본의 호스트 자체시험을 먼저 통과하십시오.");
+      const selection = requireSelection();
+      const result = await PAI.runRollbackSelfTest(getPpro(), { expectedSource: selection });
+      record = PAI.recordRollbackSelfTest(storage, requireEnvironment(), selection, result);
       render();
       return result;
     }
@@ -73,7 +75,7 @@
     }
 
     async function preparePersistence() {
-      if (!record || !PAI.canPreparePersistence(record)) throw new Error("러프컷 재생 확인을 먼저 완료하십시오.");
+      if (!record || !PAI.canPreparePersistence(record)) throw new Error("프로젝트 저장 전 검증 단계를 모두 완료하십시오.");
       const preparation = await PAI.preparePersistedRoughCut(getPpro(), record.steps.roughCut);
       record = PAI.recordPersistencePreparation(storage, requireEnvironment(), sessionId, preparation);
       render();
@@ -105,7 +107,7 @@
       return {
         hasQualification: Boolean(record),
         canStartQualification: Boolean(environment && selection),
-        canRunRollback: matching,
+        canRunRollback: Boolean(matching && record.steps.hostSelfTest.status === "PASS"),
         canConfirmPlayback: Boolean(matching
           && record.steps.roughCut.status === "PASS"
           && record.steps.playback.status !== "PASS"),
