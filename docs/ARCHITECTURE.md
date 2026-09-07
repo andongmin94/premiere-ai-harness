@@ -20,6 +20,7 @@ Premiere UXP panel
        ├─ subclip media identity + source in/out verification
        ├─ isolated output bin
        ├─ new sequence creation
+       ├─ final source-state recheck
        ├─ sequence structure snapshot
        ├─ save and later-session verification
        └─ failure cleanup
@@ -85,6 +86,7 @@ editor-flow.js / ui-view.js
 → 생성 subclip media path가 원본 media path와 같은지 확인
 → 생성 subclip의 VIDEO·AUDIO source in/out을 요청 start/end 프레임과 대조
 → 내부 시험 시퀀스 생성
+→ 원본 media path와 VIDEO·AUDIO in/out 상태 최종 재확인
 → 트랙·클립·경계 확인
 → 시험 시퀀스 삭제
 → 시험 subclip 및 빈 삭제
@@ -94,7 +96,7 @@ editor-flow.js / ui-view.js
 
 원본 검증은 첫 mutation 전에 끝나야 하며, 검사 이후 프로젝트 패널 선택이 바뀌었거나 기대한 식별자를 호스트에서 더 이상 읽지 못하면 자체시험을 시작하지 않습니다. Media file path 또는 source in/out API를 확인할 수 없는 원본도 선택 검사에서 차단합니다. PASS 결과에는 실제 시험한 프로젝트 ID·클립 ID·길이·프레임레이트를 포함하고, qualification 기록에 반영할 때 저장된 검증 대상과 다시 대조합니다.
 
-서브클립 생성 직후에는 `ClipProjectItem.getMediaFilePath()`가 원본과 같은지 비교하고, 원본 project item 자체의 VIDEO·AUDIO in/out이 생성 전 snapshot과 동일한지도 확인합니다. 이어 `ClipProjectItem.getInPoint/getOutPoint`를 VIDEO와 AUDIO 각각 호출하고 `TickTime.seconds × frameRate`를 생성 요청의 `startFrame/endFrame`과 대조합니다. 어느 검증이든 실패하면 이동이나 시퀀스 생성 전에 이번 작업의 서브클립·빈을 정리합니다. Media path 문자열은 비교에만 사용하며 qualification 또는 프로젝트 외 기록에 저장하지 않습니다. 이 검증은 시퀀스에 배치된 TrackItem의 시간 구조를 확인하는 `sequence-snapshot.js` 검증과 별개입니다.
+서브클립 생성 직후에는 `ClipProjectItem.getMediaFilePath()`가 원본과 같은지 비교하고, 원본 project item 자체의 VIDEO·AUDIO in/out이 생성 전 snapshot과 동일한지도 확인합니다. 이어 `ClipProjectItem.getInPoint/getOutPoint`를 VIDEO와 AUDIO 각각 호출하고 `TickTime.seconds × frameRate`를 생성 요청의 `startFrame/endFrame`과 대조합니다. 이 단계의 검증이 실패하면 이동이나 시퀀스 생성 전에 이번 작업의 서브클립·빈을 정리합니다. 시퀀스 생성까지 완료된 뒤에도 원본 media path와 VIDEO·AUDIO in/out을 같은 snapshot과 다시 비교하며, 여기서 불일치가 발견되면 이미 생성된 시퀀스까지 포함해 이번 작업을 rollback합니다. Media path 문자열은 비교에만 사용하며 qualification 또는 프로젝트 외 기록에 저장하지 않습니다. 이 검증은 시퀀스에 배치된 TrackItem의 시간 구조를 확인하는 `sequence-snapshot.js` 검증과 별개입니다.
 
 의도된 실패 롤백 시험은 같은 원본의 호스트 자체시험 PASS 뒤에만 실행합니다. 모든 단계와 정리가 통과한 경우에만 해당 검증 단계를 PASS로 기록합니다.
 
@@ -141,7 +143,7 @@ Qualification이 활성화된 동안 붙여넣은 SRT·WebVTT·JSON 편집안은
 7. Qualification 러프컷은 기록된 Premiere 전사문 fingerprint와 현재 편집안 fingerprint가 동일한 경우에만 mutation을 허용합니다.
 8. 기대한 프로젝트·클립 식별자 또는 source identity API를 호스트에서 읽지 못하는 경우도 fail-closed로 차단합니다.
 9. 유지 구간은 원본 프레임 안쪽으로 정렬하며 사라지는 구간은 오류로 차단합니다.
-10. 서브클립 생성 전후 원본 media path와 VIDEO·AUDIO in/out 상태가 동일해야 합니다.
+10. 서브클립 생성 직후와 전체 생성 작업 완료 후 원본 media path와 VIDEO·AUDIO in/out 상태가 최초 snapshot과 동일해야 합니다.
 11. 생성된 서브클립은 원본과 같은 media path를 가리켜야 하며 VIDEO·AUDIO source in/out도 요청한 원본 프레임과 일치해야 합니다.
 12. 성공 출력은 `PAI_OUTPUT_` 전용 빈에 격리합니다.
 13. 내부 시험 자산은 엄격한 `PAI_INTERNAL_*` 형식만 사용합니다.
