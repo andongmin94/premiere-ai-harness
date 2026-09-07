@@ -21,7 +21,7 @@ Premiere UXP panel
        ├─ isolated output bin
        ├─ new sequence creation
        ├─ final source-state recheck
-       ├─ timeline + subclip source-boundary snapshot
+       ├─ timeline + project/track source-range snapshot
        ├─ save and later-session verification
        └─ failure cleanup
 ```
@@ -56,7 +56,7 @@ premiere-runtime.js
   선택·식별자·시간·프레임·transaction 원시 기능
 
 sequence-snapshot.js
-  시퀀스 종료 시간·트랙 배치·클립 식별자와 VIDEO/AUDIO별 subclip source in/out을 포함한 snapshot v2 정규화
+  시퀀스 종료 시간·트랙 배치·클립 식별자와 VIDEO/AUDIO별 project-item source range + TrackItem source range를 포함한 snapshot v3 정규화
 
 generated-assets.js
   원본 media/state snapshot, 빈·서브클립 생성, media identity·VIDEO/AUDIO source in/out 검증, 시퀀스 생성
@@ -87,7 +87,7 @@ editor-flow.js / ui-view.js
 → 생성 subclip의 VIDEO·AUDIO source in/out을 요청 start/end 프레임과 대조
 → 내부 시험 시퀀스 생성
 → 원본 media path와 VIDEO·AUDIO in/out 상태 최종 재확인
-→ 트랙 배치와 subclip VIDEO/AUDIO source in/out snapshot 확인
+→ timeline + project-item source + TrackItem source range snapshot 확인
 → 시험 시퀀스 삭제
 → 시험 subclip 및 빈 삭제
 → 기존 활성 시퀀스 복원
@@ -98,7 +98,7 @@ editor-flow.js / ui-view.js
 
 서브클립 생성 직후에는 `ClipProjectItem.getMediaFilePath()`가 원본과 같은지 비교하고, 원본 project item 자체의 VIDEO·AUDIO in/out이 생성 전 snapshot과 동일한지도 확인합니다. 이어 `ClipProjectItem.getInPoint/getOutPoint`를 VIDEO와 AUDIO 각각 호출하고 `TickTime.seconds × frameRate`를 생성 요청의 `startFrame/endFrame`과 대조합니다. 이 단계의 검증이 실패하면 이동이나 시퀀스 생성 전에 이번 작업의 서브클립·빈을 정리합니다. 시퀀스 생성까지 완료된 뒤에도 원본 media path와 VIDEO·AUDIO in/out을 같은 snapshot과 다시 비교하며, 여기서 불일치가 발견되면 이미 생성된 시퀀스까지 포함해 이번 작업을 rollback합니다. Media path 문자열은 비교에만 사용하며 qualification 또는 프로젝트 외 기록에 저장하지 않습니다.
 
-시퀀스 snapshot v2는 각 TrackItem의 timeline `start/end`뿐 아니라 그 TrackItem이 가리키는 generated subclip project item의 `sourceIn/sourceOut`도 media type별로 기록합니다. VIDEO와 AUDIO가 같은 project item ID를 공유하면서 source 경계가 다르면 snapshot 자체가 유효하지 않습니다. 이 snapshot은 qualification의 `createdSnapshot`과 `persistenceSnapshot`에 그대로 저장됩니다.
+시퀀스 snapshot v3는 각 TrackItem에 네 종류의 source 값을 기록합니다. `projectSourceIn/projectSourceOut`은 generated subclip project item 자체의 VIDEO 또는 AUDIO 경계이고, `trackSourceIn/trackSourceOut`은 해당 VideoClipTrackItem/AudioClipTrackItem이 project item 시작점을 기준으로 실제 사용하는 구간입니다. 따라서 subclip project item은 그대로인데 타임라인에서 slip edit만 발생한 경우도 persistence 비교에서 검출됩니다. VIDEO와 AUDIO가 같은 project item ID를 공유하면서 timeline, project source, track source 중 하나라도 다르면 snapshot 자체가 유효하지 않습니다.
 
 의도된 실패 롤백 시험은 같은 원본의 호스트 자체시험 PASS 뒤에만 실행합니다. 모든 단계와 정리가 통과한 경우에만 해당 검증 단계를 PASS로 기록합니다.
 
@@ -122,18 +122,18 @@ Qualification이 활성화된 동안 붙여넣은 SRT·WebVTT·JSON 편집안은
 프로젝트 저장 준비는 호스트 자체시험, 실패 롤백 시험, 실제 Premiere 전사문, 그 전사문 fingerprint에 결합된 러프컷 생성, 사용자의 재생 확인이 모두 PASS인 경우에만 허용합니다.
 
 ```text
-러프컷 생성 직후 snapshot v2 기록
+러프컷 생성 직후 snapshot v3 기록
 → 사용자의 A/V 싱크·원본 불변 확인
 → 모든 pre-save qualification 단계와 transcript provenance 일치 확인
-→ 저장 직전 timeline + subclip sourceIn/sourceOut이 생성 snapshot과 동일한지 확인
+→ 저장 직전 timeline + projectSource + trackSource가 생성 snapshot과 동일한지 확인
 → project.save() 성공 확인
-→ 저장 직후 snapshot v2 동일성 확인
+→ 저장 직후 snapshot v3 동일성 확인
 → 저장을 준비한 패널 세션 종료
 → 새 패널 세션에서 동일 프로젝트·시퀀스 ID 확인
-→ timeline + projectItem ID/name + VIDEO/AUDIO sourceIn/sourceOut 완전 일치 확인
+→ timeline + projectItem ID/name + VIDEO/AUDIO projectSource + trackSource 완전 일치 확인
 ```
 
-snapshot v1은 source 경계를 포함하지 않으므로 현재 format에서 호환 처리하지 않습니다. 기존 snapshot v1이 남아 있는 qualification record는 정상화에 실패하며 새 qualification을 시작해야 합니다.
+snapshot v2 이하는 TrackItem source range를 포함하지 않으므로 현재 format에서 호환 처리하지 않습니다. 기존 snapshot v2 이하가 남아 있는 qualification record는 정상화에 실패하며 새 qualification을 시작해야 합니다.
 
 패널 세션 변경은 Premiere 프로세스 재시작 증거가 아닙니다. 실제 종료·재실행은 출시 체크리스트에서 별도로 확인합니다.
 
@@ -150,7 +150,7 @@ snapshot v1은 source 경계를 포함하지 않으므로 현재 format에서 �
 9. 유지 구간은 원본 프레임 안쪽으로 정렬하며 사라지는 구간은 오류로 차단합니다.
 10. 서브클립 생성 직후와 전체 생성 작업 완료 후 원본 media path와 VIDEO·AUDIO in/out 상태가 최초 snapshot과 동일해야 합니다.
 11. 생성된 서브클립은 원본과 같은 media path를 가리켜야 하며 VIDEO·AUDIO source in/out도 요청한 원본 프레임과 일치해야 합니다.
-12. persistence snapshot은 timeline 배치와 generated subclip VIDEO·AUDIO source in/out을 모두 포함해야 합니다.
+12. persistence snapshot은 timeline 배치, generated subclip project-item source range, Video/Audio TrackItem source range를 모두 포함해야 합니다.
 13. 성공 출력은 `PAI_OUTPUT_` 전용 빈에 격리합니다.
 14. 내부 시험 자산은 엄격한 `PAI_INTERNAL_*` 형식만 사용합니다.
 15. 실패 시 이번 작업에서 생성한 ID 기준 자산만 정리하고, 이름만 같은 기존 자산은 건드리지 않습니다.
