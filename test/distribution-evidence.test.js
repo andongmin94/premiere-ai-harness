@@ -118,6 +118,7 @@ test("promotes linked qualification and Creative Cloud evidence to releaseReady"
     const evidence = api.buildDistributionEvidence({ qualificationEvidenceFile: files.qualificationEvidenceFile, verificationFile: files.verificationFile, ccxFile: files.ccxFile, outputFile });
     assert.equal(evidence.releaseReady, true);
     assert.equal(evidence.adobeAttestation, false);
+    assert.equal(evidence.distributionVerification.sellerAttested, true);
     assert.equal(evidence.ccx.sha256, files.ccxSha256);
     assert.equal(evidence.sourceCommit, files.commit);
     assert.equal(evidence.distributionVerification.events.install.evidenceFiles.length, 1);
@@ -131,6 +132,23 @@ test("rejects a CCX file that is not the qualified artifact", async () => {
   await withFixture(async (files) => {
     fs.appendFileSync(files.ccxFile, "tampered");
     assert.throws(() => api.buildDistributionEvidence({ qualificationEvidenceFile: files.qualificationEvidenceFile, verificationFile: files.verificationFile, ccxFile: files.ccxFile }), /actual CCX/);
+  });
+});
+
+test("requires seller attestation and exact commit and CCX identity", async () => {
+  const api = await import("../scripts/build-distribution-evidence.mjs");
+  await withFixture(async (files) => {
+    let record = verificationRecord({ commit: files.commit, ccxSha256: files.ccxSha256, overrides: { sellerAttested: false } });
+    writeJson(files.directory, "distribution-verification.json", record);
+    assert.throws(() => api.buildDistributionEvidence({ qualificationEvidenceFile: files.qualificationEvidenceFile, verificationFile: files.verificationFile, ccxFile: files.ccxFile }), /sellerAttested/);
+
+    record = verificationRecord({ commit: "b".repeat(40), ccxSha256: files.ccxSha256 });
+    writeJson(files.directory, "distribution-verification.json", record);
+    assert.throws(() => api.buildDistributionEvidence({ qualificationEvidenceFile: files.qualificationEvidenceFile, verificationFile: files.verificationFile, ccxFile: files.ccxFile }), /commit differs/);
+
+    record = verificationRecord({ commit: files.commit, ccxSha256: "3".repeat(64) });
+    writeJson(files.directory, "distribution-verification.json", record);
+    assert.throws(() => api.buildDistributionEvidence({ qualificationEvidenceFile: files.qualificationEvidenceFile, verificationFile: files.verificationFile, ccxFile: files.ccxFile }), /CCX SHA-256 differs/);
   });
 });
 
