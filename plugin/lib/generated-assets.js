@@ -185,6 +185,7 @@
     createSubclips,
     waitForNamedClips,
     verifyGeneratedSubclips,
+    verifySourceInvariant,
     verifySubclipBoundaries,
     moveItems,
     createAndActivateSequence,
