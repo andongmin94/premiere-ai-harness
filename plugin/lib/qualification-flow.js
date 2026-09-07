@@ -75,7 +75,7 @@
     }
 
     async function preparePersistence() {
-      if (!record || !PAI.canPreparePersistence(record)) throw new Error("러프컷 재생 확인을 먼저 완료하십시오.");
+      if (!record || !PAI.canPreparePersistence(record)) throw new Error("프로젝트 저장 전 검증 단계를 모두 완료하십시오.");
       const preparation = await PAI.preparePersistedRoughCut(getPpro(), record.steps.roughCut);
       record = PAI.recordPersistencePreparation(storage, requireEnvironment(), sessionId, preparation);
       render();
