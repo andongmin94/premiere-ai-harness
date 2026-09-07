@@ -37,15 +37,22 @@
 
 ## Creative Cloud 배포 게이트
 
-- [ ] 현재 후보 exact CCX 설치 성공 증거 파일 보관
+- [ ] `npm run evidence:init-distribution -- <qualification-evidence> <previous-version> <outside-repo-workspace>` 성공
+- [ ] 생성된 workspace가 저장소 밖에 있고 기존 파일을 덮어쓰지 않았는지 확인
+- [ ] 생성된 `distribution-verification.json`의 plugin ID·버전·sourceCommit·ccxSha256이 qualification evidence와 자동 일치
+- [ ] 초기 `sellerAttested`가 `false`인지 확인
+- [ ] 초기 install/update/removal 상태가 모두 `PENDING`인지 확인
+- [ ] 현재 후보 exact CCX 설치 성공 증거 파일을 `install/` 아래 보관
 - [ ] 동일 plugin ID의 이전 시험 버전에서 현재 Core 0.5.1 후보로 업데이트 설치 성공
-- [ ] 업데이트 뒤 Premiere 패널 정상 표시 증거 파일 보관
+- [ ] 업데이트 뒤 Premiere 패널 정상 표시 증거 파일을 `update/` 아래 보관
 - [ ] Creative Cloud Desktop에서 현재 Core 0.5.1 후보 제거 성공
 - [ ] 제거 뒤 Premiere에서 패널 미노출 확인
 - [ ] 프로젝트 결과물 외 플러그인 전용 잔여 데이터가 없음을 확인
+- [ ] 제거 증거 파일을 `removal/` 아래 보관
 - [ ] 설치·업데이트·제거 각각 최소 1개의 증거 파일 보관
-- [ ] `docs/DISTRIBUTION_EVIDENCE_KO.md` 형식으로 `distribution-verification.json` 작성
-- [ ] `distribution-verification.json`의 `sourceCommit`과 `ccxSha256`이 qualification evidence와 일치
+- [ ] 실제 완료 시각·관찰 결과·상대 `evidenceFiles`만 생성된 `distribution-verification.json`에 반영
+- [ ] 세 실제 검증을 모두 끝낸 뒤에만 `sellerAttested: true`로 변경
+- [ ] `distribution-verification.json`의 `sourceCommit`과 `ccxSha256`을 수동으로 바꾸지 않았는지 확인
 - [ ] `npm run evidence:distribution -- <qualification-evidence> <distribution-verification.json> <exact.ccx>` 성공
 - [ ] final distribution evidence의 actual CCX SHA-256이 qualification evidence와 일치
 - [ ] 설치·업데이트·제거 증거 파일의 SHA-256이 final distribution evidence에 기록됨
@@ -53,7 +60,7 @@
 - [ ] final distribution evidence의 `releaseReady`가 `true`인지 확인
 - [ ] final distribution evidence와 원본 증거 파일을 exact CCX와 함께 저장소 밖에 보관
 
-Qualification evidence는 source/CCX/실제 Premiere 검증을 묶고 항상 `releaseReady: false`입니다. Final distribution evidence는 actual CCX와 판매자가 직접 수행한 Creative Cloud 설치·업데이트·제거 증거까지 모두 일치한 경우에만 `releaseReady: true`가 됩니다.
+Qualification evidence는 source/CCX/실제 Premiere 검증을 묶고 항상 `releaseReady: false`입니다. 초기화된 distribution verification workspace도 모든 실제 검증이 끝나기 전에는 PENDING 상태입니다. Final distribution evidence는 actual CCX와 판매자가 직접 수행한 Creative Cloud 설치·업데이트·제거 증거까지 모두 일치한 경우에만 `releaseReady: true`가 됩니다.
 
 `releaseReady: true`는 이 저장소가 정의한 판매자 검증 게이트의 완료를 뜻하며 Adobe가 evidence를 서명하거나 원격 attestation했다는 뜻은 아닙니다.
 
