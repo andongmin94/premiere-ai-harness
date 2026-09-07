@@ -159,3 +159,19 @@ test("rejects tampered qualification evidence before creating a workspace", asyn
     assert.equal(fs.existsSync(workspaceDirectory), false);
   });
 });
+
+test("rejects a path whose existing symlink parent resolves into the repository", { skip: process.platform === "win32" }, async () => {
+  const api = await import("../scripts/init-distribution-verification.mjs");
+  await withFixture(async (fixture) => {
+    const repositoryRoot = path.resolve(__dirname, "..");
+    const link = path.join(fixture.root, "repo-link");
+    fs.symlinkSync(repositoryRoot, link, "dir");
+    const workspaceDirectory = path.join(link, "dist", "workspace-through-link");
+    assert.throws(() => api.initDistributionVerificationWorkspace({
+      qualificationEvidenceFile: fixture.evidenceFile,
+      previousVersion: previousVersion(),
+      workspaceDirectory,
+    }), /resolves inside the repository/);
+    assert.equal(fs.existsSync(path.join(repositoryRoot, "dist", "workspace-through-link")), false);
+  });
+});
