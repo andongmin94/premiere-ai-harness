@@ -99,7 +99,7 @@
 
   function recordPersistencePreparation(storage, environment, sessionId, preparation, completedAt) {
     const current = records.requireQualificationRecord(storage, environment);
-    if (!canPreparePersistence(current)) throw new Error("러프컷 재생 확인을 먼저 완료하십시오.");
+    if (!canPreparePersistence(current)) throw new Error("프로젝트 저장 전 검증 단계를 모두 완료하십시오.");
     if (preparation?.status !== "PASS") throw new Error("프로젝트 저장과 시퀀스 구조 기록을 완료하지 못했습니다.");
     const roughCut = current.steps.roughCut;
     requireSameRoughCut(roughCut, preparation);
@@ -136,8 +136,8 @@
   }
 
   function canPreparePersistence(record) {
-    return Boolean(record?.steps?.roughCut?.status === "PASS"
-      && record?.steps?.playback?.status === "PASS"
+    const required = ["hostSelfTest", "rollbackSelfTest", "premiereTranscript", "roughCut", "playback"];
+    return Boolean(record && required.every((name) => record.steps?.[name]?.status === "PASS")
       && !record.steps.roughCut.persistenceSnapshot);
   }
 
