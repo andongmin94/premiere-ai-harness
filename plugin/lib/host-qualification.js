@@ -60,17 +60,30 @@
 
   function recordPremiereTranscript(storage, environment, selection, details, completedAt) {
     const count = Number(details?.segmentCount);
-    if (details?.source !== "premiere" || !Number.isInteger(count) || count <= 0) {
+    const fingerprint = normalizeTranscriptFingerprint(details?.fingerprint);
+    if (details?.source !== "premiere" || !Number.isInteger(count) || count <= 0 || !fingerprint) {
       throw new Error("실제 Premiere 전사문 분석 결과가 필요합니다.");
+    }
+    const current = records.requireQualificationRecord(storage, environment, selection);
+    const roughCut = current.steps.roughCut;
+    if (roughCut.status === "PASS" && roughCut.transcriptFingerprint !== fingerprint) {
+      throw new Error("러프컷 생성 후 다른 Premiere 전사문으로 검증을 바꿀 수 없습니다. 검증 기록을 초기화하십시오.");
     }
     return records.updateQualificationStep(storage, environment, selection, "premiereTranscript", {
       status: "PASS",
       completedAt,
       segmentCount: count,
+      fingerprint,
     }, completedAt);
   }
 
-  function recordRoughCut(storage, environment, selection, result, sessionId, completedAt) {
+  function recordRoughCut(storage, environment, selection, result, sessionId, transcriptFingerprintValue, completedAt) {
+    const current = records.requireQualificationRecord(storage, environment, selection);
+    const fingerprint = normalizeTranscriptFingerprint(transcriptFingerprintValue);
+    if (current.steps.premiereTranscript.status !== "PASS" || !fingerprint
+      || current.steps.premiereTranscript.fingerprint !== fingerprint) {
+      throw new Error("검증한 Premiere 전사문과 현재 러프컷 입력이 일치해야 합니다.");
+    }
     const segmentCount = Number(result?.segmentCount);
     snapshots.validateSequenceSegmentCount(result?.sequenceSnapshot, segmentCount);
     return records.updateQualificationStep(storage, environment, selection, "roughCut", {
@@ -82,6 +95,7 @@
       operationId: result?.operationId,
       segmentCount,
       createdSessionId: sessionId,
+      transcriptFingerprint: fingerprint,
       createdSnapshot: result?.sequenceSnapshot,
     }, completedAt);
   }
@@ -138,6 +152,7 @@
   function canPreparePersistence(record) {
     const required = ["hostSelfTest", "rollbackSelfTest", "premiereTranscript", "roughCut", "playback"];
     return Boolean(record && required.every((name) => record.steps?.[name]?.status === "PASS")
+      && record.steps.premiereTranscript.fingerprint === record.steps.roughCut.transcriptFingerprint
       && !record.steps.roughCut.persistenceSnapshot);
   }
 
@@ -166,6 +181,24 @@
     return record ? `${JSON.stringify(record, null, 2)}\n` : "";
   }
 
+  function transcriptFingerprint(segments) {
+    if (!Array.isArray(segments) || segments.length === 0) throw new Error("전사 구간 fingerprint를 만들 수 없습니다.");
+    let first = 0x811c9dc5;
+    let second = 0x9e3779b9;
+    for (const segment of segments) {
+      const start = Number(segment?.start);
+      const end = Number(segment?.end);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw new Error("전사 구간 시간이 올바르지 않습니다.");
+      const value = `${start.toFixed(3)}\u001f${end.toFixed(3)}\u001f${fingerprintText(segment?.text)}\u001f${fingerprintText(segment?.speaker)}\u001e`;
+      for (let index = 0; index < value.length; index += 1) {
+        const code = value.charCodeAt(index);
+        first = Math.imul(first ^ code, 0x01000193) >>> 0;
+        second = Math.imul((second ^ code) + 0x7ed55d16, 0x27d4eb2d) >>> 0;
+      }
+    }
+    return `tx1-${segments.length}-${hex32(first)}${hex32(second)}`;
+  }
+
   function requireSameSourceResult(selection, result) {
     if (String(result?.projectId || "") !== String(selection?.projectId || "")) {
       throw new Error("자체시험을 실행한 Premiere 프로젝트가 검증 대상과 다릅니다.");
@@ -188,6 +221,13 @@
     if (String(actual?.sequenceName || "") !== expected.sequenceName) throw new Error("검증 중인 러프컷 시퀀스 이름이 바뀌었습니다.");
   }
 
+  function normalizeTranscriptFingerprint(value) {
+    const text = String(value || "").trim();
+    return /^tx1-\d+-[0-9a-f]{16}$/.test(text) ? text : "";
+  }
+  function fingerprintText(value) { return String(value || "").replace(/\s+/g, " ").trim(); }
+  function hex32(value) { return (value >>> 0).toString(16).padStart(8, "0"); }
+
   return {
     QUALIFICATION_STORAGE_KEY: records.QUALIFICATION_STORAGE_KEY,
     QUALIFICATION_STEPS: records.QUALIFICATION_STEPS,
@@ -208,5 +248,6 @@
     isQualificationComplete,
     qualificationSummary,
     qualificationReport,
+    transcriptFingerprint,
   };
 });
