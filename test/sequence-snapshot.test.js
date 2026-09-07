@@ -14,16 +14,23 @@ function expectedSegments(snapshot) {
   return track.items.map((item) => ({ name: item.projectItemName, duration: item.end - item.start }));
 }
 
-test("reads deterministic video and audio sequence structure", async () => {
+test("reads deterministic video and audio sequence structure with source ranges", async () => {
   const fixture = makeFixture();
   const created = await adapter.createRoughCut(fixture.ppro, [
     { start: 0, end: 1 },
     { start: 2, end: 3 },
   ], "SNAPSHOT", fast);
   const snapshot = created.sequenceSnapshot;
+  assert.equal(snapshot.formatVersion, 3);
   assert.equal(snapshot.end, 2);
   assert.equal(snapshot.videoTracks[0].items.length, 2);
   assert.equal(snapshot.audioTracks[0].items.length, 2);
+  assert.deepEqual({
+    projectSourceIn: snapshot.videoTracks[0].items[1].projectSourceIn,
+    projectSourceOut: snapshot.videoTracks[0].items[1].projectSourceOut,
+    trackSourceIn: snapshot.videoTracks[0].items[1].trackSourceIn,
+    trackSourceOut: snapshot.videoTracks[0].items[1].trackSourceOut,
+  }, { projectSourceIn: 2, projectSourceOut: 3, trackSourceIn: 0, trackSourceOut: 1 });
   assert.deepEqual(snapshots.validateSequenceSegmentCount(snapshot, 2), snapshot);
   assert.deepEqual(snapshots.validateGeneratedSequenceSnapshot(snapshot, expectedSegments(snapshot)), snapshot);
   assert.equal(snapshots.sameSequenceSnapshot(snapshot, JSON.parse(JSON.stringify(snapshot))), true);
@@ -91,6 +98,28 @@ test("rejects shifted clip boundaries even when clip ids and count still match",
   );
 });
 
+test("rejects initially slipped generated TrackItems before blessing the snapshot baseline", async () => {
+  const fixture = makeFixture();
+  const created = await adapter.createRoughCut(fixture.ppro, [{ start: 1, end: 2 }], "INITIAL_SLIP", fast);
+  const expected = expectedSegments(created.sequenceSnapshot);
+  const slipped = structuredClone(created.sequenceSnapshot);
+  for (const tracks of [slipped.videoTracks, slipped.audioTracks]) {
+    tracks[0].items[0].trackSourceIn += 0.1;
+    tracks[0].items[0].trackSourceOut += 0.1;
+  }
+  assert.throws(() => snapshots.validateGeneratedSequenceSnapshot(slipped, expected), /source 범위/);
+});
+
+test("rough-cut creation rolls back when Premiere creates initially slipped TrackItems", async () => {
+  const fixture = makeFixture({ initialTrackInOffsetFrames: 1, initialTrackOutOffsetFrames: 1 });
+  await assert.rejects(
+    () => adapter.createRoughCut(fixture.ppro, [{ start: 1, end: 2 }], "INITIAL_HOST_SLIP", fast),
+    /source 범위/
+  );
+  assert.equal(fixture.project.sequences.length, 0);
+  assert.equal(fixture.parent.items.some((item) => String(item.name || "").startsWith("PAI_OUTPUT_")), false);
+});
+
 test("rejects changed generated-subclip order", async () => {
   const fixture = makeFixture();
   const created = await adapter.createRoughCut(fixture.ppro, [
@@ -111,19 +140,21 @@ test("rejects changed generated-subclip order", async () => {
   );
 });
 
-test("rejects inconsistent A/V boundaries for the same generated subclip", async () => {
+test("rejects inconsistent A/V timeline or track source boundaries for the same generated subclip", async () => {
   const fixture = makeFixture();
   const created = await adapter.createRoughCut(fixture.ppro, [
     { start: 0, end: 1 },
     { start: 2, end: 3 },
   ], "AV_MISMATCH", fast);
   const expected = expectedSegments(created.sequenceSnapshot);
-  const mismatch = structuredClone(created.sequenceSnapshot);
-  mismatch.audioTracks[0].items[1].end += 0.1;
-  assert.throws(
-    () => snapshots.validateGeneratedSequenceSnapshot(mismatch, expected),
-    /A\/V 경계/
-  );
+
+  const timelineMismatch = structuredClone(created.sequenceSnapshot);
+  timelineMismatch.audioTracks[0].items[1].end += 0.1;
+  assert.throws(() => snapshots.validateGeneratedSequenceSnapshot(timelineMismatch, expected), /A\/V timeline 또는 source/);
+
+  const sourceMismatch = structuredClone(created.sequenceSnapshot);
+  sourceMismatch.audioTracks[0].items[1].trackSourceIn += 0.1;
+  assert.throws(() => snapshots.validateGeneratedSequenceSnapshot(sourceMismatch, expected), /A\/V timeline 또는 source/);
 });
 
 test("rejects a partial A/V layout while still allowing truly single-media sequences", async () => {

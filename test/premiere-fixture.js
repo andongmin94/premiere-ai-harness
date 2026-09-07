@@ -118,11 +118,16 @@ function makeFixture(inputOptions = {}) {
   }
   parent.items.push(source);
 
-  function makeTrackItem(projectItem, start, end) {
+  function makeTrackItem(projectItem, start, end, kind) {
     return {
+      projectItem,
+      trackSourceIn: trackOffset(options, kind, "In") / fps,
+      trackSourceOut: Math.max(0, end - start) + trackOffset(options, kind, "Out") / fps,
       async getStartTime() { return tick(start); },
       async getEndTime() { return tick(end); },
-      async getProjectItem() { return projectItem; },
+      async getInPoint() { return tick(this.trackSourceIn); },
+      async getOutPoint() { return tick(this.trackSourceOut); },
+      async getProjectItem() { return this.projectItem; },
     };
   }
 
@@ -138,17 +143,17 @@ function makeFixture(inputOptions = {}) {
 
   function makeSequence(name, clips, guid) {
     let cursor = 0;
-    const timelineItems = [];
+    const placements = [];
     if (!options.emptySequence) {
       const selected = options.missingLastSequenceItem ? clips.slice(0, -1) : clips;
       for (const clip of selected) {
         const length = Math.max(0, Number(clip.endFrame) - Number(clip.startFrame)) / fps;
-        timelineItems.push(makeTrackItem(clip, cursor, cursor + length));
+        placements.push({ clip, start: cursor, end: cursor + length });
         cursor += length;
       }
     }
-    const videoItems = options.omitVideo ? [] : timelineItems.map((item) => item);
-    const audioItems = options.omitAudio ? [] : timelineItems.map((item) => item);
+    const videoItems = options.omitVideo ? [] : placements.map((item) => makeTrackItem(item.clip, item.start, item.end, "video"));
+    const audioItems = options.omitAudio ? [] : placements.map((item) => makeTrackItem(item.clip, item.start, item.end, "audio"));
     const sequence = {
       guid,
       name,
@@ -257,6 +262,14 @@ function boundaryOffset(options, mediaType, side) {
   const specific = Number(options[`subclip${media}${side}OffsetFrames`]);
   if (Number.isFinite(specific)) return specific;
   const generic = Number(options[`subclip${side}OffsetFrames`]);
+  return Number.isFinite(generic) ? generic : 0;
+}
+
+function trackOffset(options, kind, side) {
+  const media = kind === "audio" ? "Audio" : "Video";
+  const specific = Number(options[`initialTrack${media}${side}OffsetFrames`]);
+  if (Number.isFinite(specific)) return specific;
+  const generic = Number(options[`initialTrack${side}OffsetFrames`]);
   return Number.isFinite(generic) ? generic : 0;
 }
 

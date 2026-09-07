@@ -13,8 +13,11 @@ function writeJson(directory, name, value) { const file = path.join(directory, n
 function previousVersion() { return packageJson.version === "0.0.0" ? "0.0.1" : "0.0.0"; }
 function higherVersion() { const major = Number(packageJson.version.split(".")[0]); return `${major + 1}.0.0`; }
 function snapshot() {
-  const item = { projectItemId: "subclip-1", projectItemName: "clip-1", start: 0, end: 1, sourceIn: 0, sourceOut: 1 };
-  return { formatVersion: 2, end: 1, videoTracks: [{ index: 0, items: [item] }], audioTracks: [{ index: 0, items: [item] }] };
+  const item = {
+    projectItemId: "subclip-1", projectItemName: "clip-1", start: 0, end: 1,
+    projectSourceIn: 0, projectSourceOut: 1, trackSourceIn: 0, trackSourceOut: 1,
+  };
+  return { formatVersion: 3, end: 1, videoTracks: [{ index: 0, items: [item] }], audioTracks: [{ index: 0, items: [item] }] };
 }
 
 async function makeQualificationEvidence(directory) {

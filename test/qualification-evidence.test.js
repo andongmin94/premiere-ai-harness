@@ -13,9 +13,12 @@ function writeJson(directory, name, value) {
 }
 
 function snapshot() {
-  const item = { projectItemId: "subclip-1", projectItemName: "clip-1", start: 0, end: 1, sourceIn: 0, sourceOut: 1 };
+  const item = {
+    projectItemId: "subclip-1", projectItemName: "clip-1", start: 0, end: 1,
+    projectSourceIn: 0, projectSourceOut: 1, trackSourceIn: 0, trackSourceOut: 1,
+  };
   return {
-    formatVersion: 2,
+    formatVersion: 3,
     end: 1,
     videoTracks: [{ index: 0, items: [item] }],
     audioTracks: [{ index: 0, items: [item] }],
@@ -153,17 +156,17 @@ test("rejects source, version, and transcript provenance mismatches", async () =
   });
 });
 
-test("rejects snapshot v1 and source-boundary drift in external qualification reports", async () => {
+test("rejects snapshot v2 and track-source drift in external qualification reports", async () => {
   const api = await import("../scripts/build-qualification-evidence.mjs");
   await withFixture(async (files) => {
     const legacy = qualificationReport();
-    legacy.steps.roughCut.createdSnapshot.formatVersion = 1;
+    legacy.steps.roughCut.createdSnapshot.formatVersion = 2;
     writeJson(files.directory, "qualification.json", legacy);
-    assert.throws(() => api.buildQualificationEvidence(files), /snapshot v2/);
+    assert.throws(() => api.buildQualificationEvidence(files), /snapshot v3/);
 
     const drifted = qualificationReport();
     for (const group of [drifted.steps.roughCut.persistenceSnapshot.videoTracks, drifted.steps.roughCut.persistenceSnapshot.audioTracks]) {
-      group[0].items[0].sourceIn = 0.04;
+      group[0].items[0].trackSourceIn = 0.04;
     }
     writeJson(files.directory, "qualification.json", drifted);
     assert.throws(() => api.buildQualificationEvidence(files), /source-aware snapshots differ/);

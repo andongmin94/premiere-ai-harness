@@ -15,6 +15,7 @@ const REQUIRED_STEPS = Object.freeze([
 const REMAINING_RELEASE_GATE = "Creative Cloud install, update, and removal evidence is not represented by this file";
 const SNAPSHOT_EPSILON = 0.001;
 const MAX_MEDIA_SECONDS = 12 * 60 * 60;
+const SOURCE_FIELDS = Object.freeze(["projectSourceIn", "projectSourceOut", "trackSourceIn", "trackSourceOut"]);
 
 export function buildQualificationEvidence(options = {}) {
   const packageJson = readJson(path.join(root, "package.json"));
@@ -136,14 +137,14 @@ function validateInputs(source, ccx, qualification, version) {
   assert(qualification.steps.roughCut.transcriptFingerprint === transcriptFingerprint, "qualification transcript provenance mismatch");
   const createdSnapshot = qualification.steps.roughCut.createdSnapshot;
   const persistenceSnapshot = qualification.steps.roughCut.persistenceSnapshot;
-  validateSnapshotV2(createdSnapshot, "qualification created snapshot");
-  validateSnapshotV2(persistenceSnapshot, "qualification persistence snapshot");
+  validateSnapshotV3(createdSnapshot, "qualification created snapshot");
+  validateSnapshotV3(persistenceSnapshot, "qualification persistence snapshot");
   assert(canonicalJson(createdSnapshot) === canonicalJson(persistenceSnapshot), "qualification source-aware snapshots differ");
   assertText(qualification.steps.persistence.verifiedSessionId, "qualification persistence session id");
 }
 
-function validateSnapshotV2(value, label) {
-  assert(value?.formatVersion === 2, `${label} must use snapshot v2`);
+function validateSnapshotV3(value, label) {
+  assert(value?.formatVersion === 3, `${label} must use snapshot v3`);
   assertFiniteTime(value.end, `${label} end`);
   const seen = new Map();
   for (const groupName of ["videoTracks", "audioTracks"]) {
@@ -152,25 +153,27 @@ function validateSnapshotV2(value, label) {
     for (let trackIndex = 0; trackIndex < tracks.length; trackIndex += 1) {
       const track = tracks[trackIndex];
       assert(Number(track?.index) === trackIndex && Array.isArray(track?.items), `${label} ${groupName} track is invalid`);
-      for (const item of track.items) {
-        assertText(item?.projectItemId, `${label} project item id`);
-        const start = assertFiniteTime(item?.start, `${label} timeline start`);
-        const end = assertFiniteTime(item?.end, `${label} timeline end`);
-        const sourceIn = assertFiniteTime(item?.sourceIn, `${label} source in`);
-        const sourceOut = assertFiniteTime(item?.sourceOut, `${label} source out`);
-        assert(end > start && sourceOut > sourceIn, `${label} item ranges are invalid`);
-        const key = String(item.projectItemId);
-        const existing = seen.get(key);
-        if (existing) {
-          assert(sameTime(existing.start, start) && sameTime(existing.end, end)
-            && sameTime(existing.sourceIn, sourceIn) && sameTime(existing.sourceOut, sourceOut), `${label} A/V item boundaries differ`);
-        } else {
-          seen.set(key, { start, end, sourceIn, sourceOut });
-        }
-      }
+      for (const item of track.items) validateSnapshotItem(item, label, seen);
     }
   }
   assert(seen.size > 0, `${label} contains no generated items`);
+}
+
+function validateSnapshotItem(item, label, seen) {
+  assertText(item?.projectItemId, `${label} project item id`);
+  const start = assertFiniteTime(item?.start, `${label} timeline start`);
+  const end = assertFiniteTime(item?.end, `${label} timeline end`);
+  const source = Object.fromEntries(SOURCE_FIELDS.map((field) => [field, assertFiniteTime(item?.[field], `${label} ${field}`)]));
+  assert(end > start && source.projectSourceOut > source.projectSourceIn
+    && source.trackSourceOut > source.trackSourceIn, `${label} item ranges are invalid`);
+  const current = { start, end, ...source };
+  const key = String(item.projectItemId);
+  const existing = seen.get(key);
+  if (existing) {
+    assert(Object.keys(current).every((field) => sameTime(existing[field], current[field])), `${label} A/V item boundaries differ`);
+  } else {
+    seen.set(key, current);
+  }
 }
 
 function assertFiniteTime(value, label) {

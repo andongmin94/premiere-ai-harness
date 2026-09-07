@@ -152,6 +152,8 @@ function checkAdobeContract(text) {
     "AudioTrack.getTrackItems": "getTrackItems",
     "TrackItem.getStartTime": "getStartTime",
     "TrackItem.getEndTime": "getEndTime",
+    "TrackItem.getInPoint": "item.getInPoint",
+    "TrackItem.getOutPoint": "item.getOutPoint",
     "TrackItem.getProjectItem": "getProjectItem",
     "Constants.TrackItemType.CLIP": "TrackItemType?.CLIP",
     "Constants.MediaType.VIDEO": "mediaTypes?.VIDEO",
