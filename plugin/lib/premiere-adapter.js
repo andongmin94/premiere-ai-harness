@@ -131,6 +131,7 @@
       await assets.verifyGeneratedSubclips(context.clip, resources.subclips, ranges, sourceState, ppro, timing.frameRate);
       await assets.moveItems(resources.project, resources.parentBin, resources.runBin, resources.subclips);
       await assets.waitForNamedClips(resources.runBin, resources.subclipNames, ppro, settings);
+      await assets.verifySourceInvariant(context.clip, sourceState, ppro, timing.frameRate);
       failureObserved = true;
       const probe = new Error("의도된 롤백 자체시험 오류");
       probe.code = ROLLBACK_PROBE_CODE;
@@ -226,6 +227,7 @@
     await assets.moveItems(resources.project, resources.parentBin, resources.runBin, resources.subclips);
     await assets.waitForNamedClips(resources.runBin, resources.subclipNames, ppro, options);
     resources.sequence = await assets.createAndActivateSequence(resources, resources.subclips, resources.runBin);
+    await assets.verifySourceInvariant(sourceClip, sourceState, ppro, options.frameRate);
   }
 
   function createResourceRecord(ppro, project, parentBin, operationId, sequenceName, count, binSuffix, clipSuffix, sequenceBaseline) {
