@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { verifyQualificationEvidence } from "./build-qualification-evidence.mjs";
 
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const EVENT_NAMES = Object.freeze(["install", "update", "removal"]);
 const MAX_EVIDENCE_FILES = 20;
 const MAX_EVIDENCE_BYTES = 50 * 1024 * 1024;
@@ -196,7 +197,7 @@ function assertHex(value, length, label) { assert(new RegExp(`^[0-9a-f]{${length
 function assertSemver(value, label) { assert(/^\d+\.\d+\.\d+$/.test(String(value || "")), `invalid ${label}`); }
 function normalizeRelative(value) { return String(value).replace(/\\/g, "/"); }
 function assert(condition, message) { if (!condition) throw new Error(message); }
-function defaultOutputFile(version) { return path.join(process.cwd(), "dist", `PremiereAIHarness-Core-${version}-distribution-evidence.json`); }
+function defaultOutputFile(version) { return path.join(root, "dist", `PremiereAIHarness-Core-${version}-distribution-evidence.json`); }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const evidence = buildDistributionEvidence({
