@@ -6,6 +6,12 @@
   "use strict";
 
   const EPSILON = 1e-9;
+  const MAX_RETAKE_LOOKBACK_SECONDS = 6;
+  const MAX_RETAKE_GAP_SECONDS = 1.5;
+  const MAX_FILLER_GAP_SECONDS = 0.8;
+  const MIN_DUPLICATE_CHARS = 8;
+  const MIN_DUPLICATE_LENGTH_RATIO = 0.65;
+  const AUTO_DUPLICATE_SIMILARITY = 0.94;
   const PRESETS = Object.freeze({
     conservative: Object.freeze({ silenceSeconds: 1.2, preservePause: 0.25, duplicateSimilarity: 0.94, maxDeleteRatio: 0.25, minKeepSeconds: 0.3 }),
     balanced: Object.freeze({ silenceSeconds: 0.8, preservePause: 0.2, duplicateSimilarity: 0.88, maxDeleteRatio: 0.4, minKeepSeconds: 0.25 }),
@@ -98,14 +104,23 @@
   function detectRetakes(segments, output) {
     segments.forEach((segment, index) => {
       if (!RETAKE_SIGNALS.some((pattern) => pattern.test(segment.text))) return;
-      let start = segment.start;
-      if (index > 0) {
-        const previous = segments[index - 1];
-        const gap = segment.start - previous.end;
-        if (speakerCompatible(previous, segment) && gap <= 1.5 && !/[.!?。！？]$/.test(previous.text)) start = previous.start;
-      }
-      output.push(candidate("retake", start, segment.end, 0.99, "재촬영 신호가 포함된 구간"));
+      output.push(candidate("retake", findRetakeStart(segments, index), segment.end, 0.99, "재촬영 신호가 포함된 구간"));
     });
+  }
+
+  function findRetakeStart(segments, index) {
+    const marker = segments[index];
+    let start = marker.start;
+    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+      const previous = segments[cursor];
+      const following = segments[cursor + 1];
+      if (!speakerCompatible(previous, marker)) break;
+      if (following.start - previous.end > MAX_RETAKE_GAP_SECONDS) break;
+      if (marker.start - previous.start > MAX_RETAKE_LOOKBACK_SECONDS) break;
+      if (endsSentence(previous.text)) break;
+      start = previous.start;
+    }
+    return start;
   }
 
   function detectSilences(segments, output, rules) {
@@ -124,8 +139,10 @@
     let runStart = -1;
     for (let index = 0; index <= segments.length; index += 1) {
       const filler = index < segments.length && isFillerOnly(segments[index].text);
-      const speakerBreak = filler && runStart >= 0 && !speakerCompatible(segments[index - 1], segments[index]);
-      if ((!filler || speakerBreak) && runStart >= 0) {
+      const previous = index > 0 ? segments[index - 1] : null;
+      const speakerBreak = filler && runStart >= 0 && !speakerCompatible(previous, segments[index]);
+      const gapBreak = filler && runStart >= 0 && segments[index].start - previous.end > MAX_FILLER_GAP_SECONDS;
+      if ((!filler || speakerBreak || gapBreak) && runStart >= 0) {
         appendFillerCandidate(segments, output, runStart, index - 1);
         runStart = -1;
       }
@@ -148,10 +165,14 @@
       const earlier = segments[index - 1];
       const later = segments[index];
       if (!speakerCompatible(earlier, later) || later.start - earlier.end > 3) continue;
+      if (!duplicateComparable(earlier.text, later.text)) continue;
       const similarity = textSimilarity(earlier.text, later.text);
       if (similarity < rules.duplicateSimilarity) continue;
-      const target = normalizeForCompare(later.text).length >= normalizeForCompare(earlier.text).length ? earlier : later;
-      output.push(candidate("duplicate", target.start, target.end, Math.min(0.97, 0.75 + similarity * 0.22), `유사 반복 발화 ${(similarity * 100).toFixed(0)}%`));
+      const target = compactForCompare(later.text).length >= compactForCompare(earlier.text).length ? earlier : later;
+      const confidence = similarity >= AUTO_DUPLICATE_SIMILARITY
+        ? Math.min(0.97, 0.76 + similarity * 0.21)
+        : Math.min(0.89, 0.72 + similarity * 0.19);
+      output.push(candidate("duplicate", target.start, target.end, confidence, `유사 반복 발화 ${(similarity * 100).toFixed(0)}%`));
     }
   }
 
@@ -218,16 +239,61 @@
     if (rules.minKeepSeconds <= 0) throw new Error("최소 유지 구간은 0보다 커야 합니다.");
   }
 
+  function duplicateComparable(left, right) {
+    const first = compactForCompare(left);
+    const second = compactForCompare(right);
+    if (Math.min(first.length, second.length) < MIN_DUPLICATE_CHARS) return false;
+    return Math.min(first.length, second.length) / Math.max(first.length, second.length) >= MIN_DUPLICATE_LENGTH_RATIO;
+  }
+
   function speakerCompatible(left, right) {
     const first = normalizeForCompare(left?.speaker);
     const second = normalizeForCompare(right?.speaker);
     return !first || !second || first === second;
   }
+
+  function textSimilarity(left, right) {
+    const normalizedLeft = normalizeForCompare(left);
+    const normalizedRight = normalizeForCompare(right);
+    if (!normalizedLeft || !normalizedRight) return 0;
+    if (normalizedLeft === normalizedRight) return 1;
+    return Math.max(tokenSimilarity(normalizedLeft, normalizedRight), characterSimilarity(normalizedLeft, normalizedRight));
+  }
+
+  function tokenSimilarity(left, right) {
+    const first = new Set(tokenize(left));
+    const second = new Set(tokenize(right));
+    if (!first.size || !second.size) return 0;
+    let intersection = 0;
+    for (const token of first) if (second.has(token)) intersection += 1;
+    return intersection / Math.max(first.size, second.size);
+  }
+
+  function characterSimilarity(left, right) {
+    const first = compactForCompare(left);
+    const second = compactForCompare(right);
+    if (!first || !second) return 0;
+    if (first === second) return 1;
+    const firstNgrams = ngramSet(first, 3);
+    const secondNgrams = ngramSet(second, 3);
+    if (!firstNgrams.size || !secondNgrams.size) return 0;
+    let intersection = 0;
+    for (const ngram of firstNgrams) if (secondNgrams.has(ngram)) intersection += 1;
+    return (2 * intersection) / (firstNgrams.size + secondNgrams.size);
+  }
+
+  function ngramSet(value, size) {
+    const output = new Set();
+    for (let index = 0; index <= value.length - size; index += 1) output.add(value.slice(index, index + size));
+    return output;
+  }
+
   function approvalSafetyError(message) { const error = new Error(message); error.code = "PAI_APPROVAL_SAFETY"; return error; }
   function candidate(type, start, end, confidence, reason) { return { type, start, end, confidence, reason }; }
   function isFillerOnly(text) { const tokens = tokenize(text); return tokens.length > 0 && tokens.length <= 4 && tokens.every((token) => FILLERS.has(token)); }
-  function textSimilarity(left, right) { const first = new Set(tokenize(left)); const second = new Set(tokenize(right)); if (!first.size || !second.size) return 0; let intersection = 0; for (const token of first) if (second.has(token)) intersection += 1; return intersection / Math.max(first.size, second.size); }
+  function endsSentence(text) { return /[.!?。！？][”’\"']?$/.test(String(text || "").trim()); }
   function tokenize(text) { return normalizeForCompare(text).split(/\s+/).filter(Boolean); }
+  function compactForCompare(text) { return normalizeForCompare(text).replace(/\s+/g, ""); }
   function normalizeForCompare(text) { return String(text || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim(); }
   function clamp(value, min, max) { return Math.min(max, Math.max(min, Number(value))); }
   function round3(value) { return Math.round(Number(value) * 1000) / 1000; }
