@@ -32,11 +32,20 @@ npm run verify
 7. Premiere의 UXP Plugins 메뉴에서 패널을 엽니다.
 8. 플러그인 안의 실제 Premiere 검증 단계를 완료합니다.
 9. Premiere를 실제로 종료·재실행하고 새 패널 세션의 구조 확인을 완료합니다.
-10. 같은 ID의 다음 시험 버전으로 업데이트 설치를 확인합니다.
-11. Creative Cloud Desktop의 Manage Plugins에서 제거합니다.
+10. 패널의 PASS 기록으로 qualification evidence를 생성합니다.
+11. 동일 plugin ID의 이전 시험 버전에서 현재 Core 0.5.1 후보로 업데이트 설치를 확인합니다.
+12. Creative Cloud Desktop의 Manage Plugins에서 현재 후보를 제거하고 패널 미노출·잔여 플러그인 데이터를 확인합니다.
+13. 설치·업데이트·제거 증거 파일과 `distribution-verification.json`을 작성합니다.
+14. actual CCX와 qualification evidence를 함께 사용해 final distribution evidence를 생성합니다.
 
 설치 실패 시 Creative Cloud Desktop의 오류 Details를 보존합니다. 사용자가 직접 UPIA 명령이나 시스템 폴더 삭제를 수행하도록 요구하지 않습니다.
 
+Final distribution evidence 입력 형식과 명령은 [`DISTRIBUTION_EVIDENCE_KO.md`](DISTRIBUTION_EVIDENCE_KO.md)를 따릅니다. 도구는 actual CCX를 다시 SHA-256으로 계산하고 설치·업데이트·제거 증거 파일도 각각 SHA-256으로 고정합니다.
+
 ## 판정 경계
 
-CCX 구조 검증 PASS는 Creative Cloud 설치 PASS가 아닙니다. 실제 설치·업데이트·제거와 Premiere 호스트 검증이 끝날 때까지 `Distribution Qualification Candidate`입니다.
+CCX 구조 검증 PASS는 Creative Cloud 설치 PASS가 아닙니다. Qualification evidence PASS도 설치·업데이트·제거 PASS가 아닙니다.
+
+이 저장소가 정의한 모든 실제 게이트와 증거 파일을 통과해 final distribution evidence의 `releaseReady: true`가 생성된 경우에만 판매자 내부 배포 자격검증이 완료된 것으로 판정합니다. 이 값은 판매자가 수행한 수동 검증 완료를 의미하며 Adobe가 evidence를 서명하거나 원격 attestation했다는 뜻은 아닙니다.
+
+실제 증거가 생성·보관되기 전 현재 Core 0.5.1 상태는 계속 `Distribution Qualification Candidate`입니다.

@@ -20,7 +20,13 @@ assert(manifest.entrypoints[0].id === "premiere-ai-harness-panel", "unexpected p
 assert(manifest.main === "index.html", "main must be index.html");
 assert(!manifest.requiredPermissions, "Core plugin must not request external permissions");
 
-for (const file of ["scripts/build-ccx.mjs", "scripts/ccx-format.mjs", "scripts/test-ccx.mjs"]) {
+for (const file of [
+  "scripts/build-ccx.mjs",
+  "scripts/ccx-format.mjs",
+  "scripts/test-ccx.mjs",
+  "scripts/build-qualification-evidence.mjs",
+  "scripts/build-distribution-evidence.mjs",
+]) {
   assert(fs.existsSync(path.join(root, file)), `distribution script is missing: ${file}`);
 }
 
@@ -76,6 +82,7 @@ for (const file of [
   "STATUS.md",
   "docs/ARCHITECTURE.md",
   "docs/DISTRIBUTION_KO.md",
+  "docs/DISTRIBUTION_EVIDENCE_KO.md",
   "docs/RELEASE_CHECKLIST_KO.md",
   "docs/UNINSTALL_KO.md",
   "plugin/README.txt",

@@ -66,11 +66,30 @@ dist/PremiereAIHarness-Core-0.5.1-qualification-evidence.json
 
 이 파일은 **qualification evidence candidate**일 뿐이며 `releaseReady`는 항상 `false`입니다. Creative Cloud 실제 설치·업데이트·제거 증거는 별도 실제 Adobe 게이트이므로 이 파일만으로 판매판이나 GA를 주장하지 않습니다.
 
+## Final distribution evidence
+
+Creative Cloud Desktop에서 exact CCX의 설치, 동일 plugin ID의 이전 시험 버전에서 현재 후보로 업데이트, 현재 후보 제거까지 실제로 확인한 뒤 `distribution-verification.json`과 각 단계의 증거 파일을 보관합니다.
+
+```bash
+npm run evidence:distribution -- \
+  /path/to/PremiereAIHarness-Core-0.5.1-qualification-evidence.json \
+  /path/to/distribution-verification.json \
+  /path/to/PremiereAIHarness-Core-0.5.1-premierepro.ccx
+```
+
+도구는 actual CCX 파일 바이트를 다시 해시하고, 설치·업데이트·제거의 PASS 상태와 증거 파일 존재 여부·SHA-256을 검증합니다. 모든 항목이 일치한 경우에만 다음 파일의 `releaseReady`가 `true`가 됩니다.
+
+```text
+dist/PremiereAIHarness-Core-0.5.1-distribution-evidence.json
+```
+
+이 최종 evidence는 **판매자가 직접 수행·보관하는 수동 검증 기록**이며 Adobe가 서명한 attestation은 아닙니다. 결과에는 `adobeAttestation: false`가 고정됩니다. 입력 JSON 형식과 증거 파일 규칙은 [`docs/DISTRIBUTION_EVIDENCE_KO.md`](docs/DISTRIBUTION_EVIDENCE_KO.md)를 참고하십시오.
+
 ## 실제 호스트·설치 검증 흐름
 
 ```text
 깨끗한 검증 대상 커밋에서 source tree SHA-256·CCX SHA-256·Git commit 기록
-→ Creative Cloud Desktop으로 설치
+→ Creative Cloud Desktop으로 exact CCX 설치
 → Premiere에서 패널 열기
 → 원본 검사 및 실제 Premiere 검증 시작
 → 호스트 자체시험
@@ -81,7 +100,9 @@ dist/PremiereAIHarness-Core-0.5.1-qualification-evidence.json
 → 프로젝트 저장과 시퀀스 구조 기록
 → Premiere 또는 패널을 다시 열어 새 패널 세션에서 구조 동일성 확인
 → qualification evidence JSON 생성·보관
-→ 업데이트 설치와 제거 확인
+→ 동일 ID의 이전 시험 버전에서 현재 후보로 업데이트 설치 확인
+→ 현재 후보 제거와 패널 미노출·잔여 플러그인 데이터 확인
+→ final distribution evidence JSON 생성·보관
 ```
 
 플러그인은 프로젝트 저장 성공과 **새 패널 세션**의 구조 동일성을 검증합니다. Premiere 프로세스 자체가 재시작됐는지는 사용자가 체크리스트에서 별도로 확인해야 합니다.
@@ -90,4 +111,4 @@ dist/PremiereAIHarness-Core-0.5.1-qualification-evidence.json
 
 현재 Core에는 멀티캠, 자동 B-roll, 모션 자막, 최종 오디오 믹싱, OpenAI/ChatGPT 연결, 무인 완성편집이 포함되지 않습니다.
 
-상세 상태는 [`STATUS.md`](STATUS.md), [`docs/DISTRIBUTION_KO.md`](docs/DISTRIBUTION_KO.md), [`docs/RELEASE_CHECKLIST_KO.md`](docs/RELEASE_CHECKLIST_KO.md)를 참고하십시오.
+상세 상태는 [`STATUS.md`](STATUS.md), [`docs/DISTRIBUTION_KO.md`](docs/DISTRIBUTION_KO.md), [`docs/DISTRIBUTION_EVIDENCE_KO.md`](docs/DISTRIBUTION_EVIDENCE_KO.md), [`docs/RELEASE_CHECKLIST_KO.md`](docs/RELEASE_CHECKLIST_KO.md)를 참고하십시오.
