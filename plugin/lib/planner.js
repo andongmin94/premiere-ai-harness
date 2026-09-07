@@ -185,14 +185,19 @@
       reason: item.reason,
     })).filter((item) => item.end - item.start >= 0.05).sort((left, right) => left.start - right.start || left.end - right.end);
     const result = [];
+    const byRange = new Map();
     for (const item of normalized) {
-      const previous = result[result.length - 1];
-      if (previous && item.start <= previous.end + 0.02) {
-        previous.end = Math.max(previous.end, item.end);
-        previous.confidence = Math.max(previous.confidence, item.confidence);
-        previous.type = previous.type === item.type ? previous.type : "combined";
-        if (!previous.reason.includes(item.reason)) previous.reason += ` · ${item.reason}`;
-      } else result.push(Object.assign({}, item));
+      const key = `${item.start}:${item.end}`;
+      const previous = byRange.get(key);
+      if (!previous) {
+        const copy = Object.assign({}, item);
+        result.push(copy);
+        byRange.set(key, copy);
+        continue;
+      }
+      previous.confidence = Math.max(previous.confidence, item.confidence);
+      previous.type = previous.type === item.type ? previous.type : "combined";
+      if (!previous.reason.includes(item.reason)) previous.reason += ` · ${item.reason}`;
     }
     return result.map((item, index) => Object.freeze(Object.assign({ id: `cut-${String(index + 1).padStart(4, "0")}` }, item)));
   }
