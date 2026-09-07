@@ -12,6 +12,7 @@ function sha256(value) { return crypto.createHash("sha256").update(value).digest
 function writeJson(directory, name, value) { const file = path.join(directory, name); fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`); return file; }
 function writeFile(directory, name, value) { const file = path.join(directory, name); fs.writeFileSync(file, value); return file; }
 function previousVersion() { return packageJson.version === "0.0.0" ? "0.0.1" : "0.0.0"; }
+function higherVersion() { const major = Number(packageJson.version.split(".")[0]); return `${major + 1}.0.0`; }
 
 function snapshot() {
   const item = { projectItemId: "subclip-1", projectItemName: "clip-1", start: 0, end: 1 };
@@ -152,11 +153,16 @@ test("requires seller attestation and exact commit and CCX identity", async () =
   });
 });
 
-test("requires complete install, update, removal, and local proof files", async () => {
+test("requires a real upgrade path plus complete install, removal, and proof files", async () => {
   const api = await import("../scripts/build-distribution-evidence.mjs");
   await withFixture(async (files) => {
     let record = verificationRecord({ commit: files.commit, ccxSha256: files.ccxSha256 });
     record.events.update.fromVersion = packageJson.version;
+    writeJson(files.directory, "distribution-verification.json", record);
+    assert.throws(() => api.buildDistributionEvidence({ qualificationEvidenceFile: files.qualificationEvidenceFile, verificationFile: files.verificationFile, ccxFile: files.ccxFile }), /update version path/);
+
+    record = verificationRecord({ commit: files.commit, ccxSha256: files.ccxSha256 });
+    record.events.update.fromVersion = higherVersion();
     writeJson(files.directory, "distribution-verification.json", record);
     assert.throws(() => api.buildDistributionEvidence({ qualificationEvidenceFile: files.qualificationEvidenceFile, verificationFile: files.verificationFile, ccxFile: files.ccxFile }), /update version path/);
 
