@@ -128,6 +128,47 @@ test("host self-test rejects a Premiere selection that changed after inspection"
   assert.match(document.elements.get("status").textContent, /원본 클립이 바뀌었습니다/);
 });
 
+test("active qualification binds rough cut creation to the recorded Premiere transcript", async () => {
+  const document = makeDocument();
+  const storage = makeStorage();
+  const fixture = makeFixture();
+  const controller = controllerApi.createController({
+    document,
+    storage,
+    requireFn: makeRequire(fixture.ppro),
+    sessionId: "transcript-session",
+  });
+  controller.initialize();
+  await controller.inspectSelection();
+  await controller.startQualification();
+  await controller.runHostSelfTest();
+
+  document.elements.get("transcript-input").value = "1\n00:00:00,000 --> 00:00:01,000\n붙여넣은 전사문입니다.";
+  await controller.analyzePastedTranscript();
+  const transactionsBeforeBlockedApply = fixture.project.transactions.length;
+  await controller.applyRoughCut();
+  assert.equal(fixture.project.transactions.length, transactionsBeforeBlockedApply);
+  assert.equal(fixture.project.sequences.length, 0);
+  assert.equal(controller.getQualification().steps.roughCut.status, "PENDING");
+  assert.match(document.elements.get("status").textContent, /Premiere 전사문/);
+
+  await controller.loadPremiereTranscript();
+  await controller.applyRoughCut();
+  const qualified = controller.getQualification();
+  assert.equal(fixture.project.sequences.length, 1);
+  assert.equal(qualified.steps.roughCut.status, "PASS");
+  assert.equal(qualified.steps.roughCut.transcriptFingerprint, qualified.steps.premiereTranscript.fingerprint);
+
+  fixture.options.transcriptJson = JSON.stringify({ segments: [{ start: 0, end: 1, text: "changed transcript" }] });
+  await controller.loadPremiereTranscript();
+  assert.match(document.elements.get("status").textContent, /다른 Premiere 전사문/);
+  const transactionsBeforeMismatchedApply = fixture.project.transactions.length;
+  await controller.applyRoughCut();
+  assert.equal(fixture.project.transactions.length, transactionsBeforeMismatchedApply);
+  assert.equal(fixture.project.sequences.length, 1);
+  assert.match(document.elements.get("status").textContent, /현재 편집안의 전사문이 다릅니다/);
+});
+
 test("guided qualification requires host self-test before rollback and a later panel session before persistence", async () => {
   const storage = makeStorage();
   const fixture = makeFixture();
