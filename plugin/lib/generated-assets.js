@@ -7,6 +7,17 @@
   const ACTION_BATCH_SIZE = 32;
   const FRAME_READ_TOLERANCE = 0.001;
 
+  async function captureSourceState(clip, ppro, frameRate) {
+    if (!Number.isFinite(frameRate) || frameRate <= 0) throw new Error("원본 상태 검증용 프레임레이트가 올바르지 않습니다.");
+    const mediaTypes = requireMediaTypes(ppro);
+    const mediaPath = await readMediaPath(clip, "원본 클립");
+    return Object.freeze({
+      mediaPath,
+      video: await readBoundarySnapshot(clip, mediaTypes.VIDEO, frameRate, "원본 VIDEO"),
+      audio: await readBoundarySnapshot(clip, mediaTypes.AUDIO, frameRate, "원본 AUDIO"),
+    });
+  }
+
   async function createGeneratedBin(resources, ppro, options) {
     runtime.runTransaction(resources.project, "Premiere AI Harness: 작업 빈 생성", [
       function () { return resources.parentBin.createBinAction(resources.binName, false); },
@@ -46,20 +57,32 @@
     }, options?.delay, `생성된 서브클립 ${names.length}개를 확인하지 못했습니다.`, options?.timeoutMs);
   }
 
+  async function verifyGeneratedSubclips(sourceClip, clips, ranges, sourceState, ppro, frameRate) {
+    if (!sourceState?.mediaPath) throw new Error("원본 상태 snapshot이 없어 생성 결과를 검증할 수 없습니다.");
+    await verifySourceInvariant(sourceClip, sourceState, ppro, frameRate);
+    for (let index = 0; index < clips.length; index += 1) {
+      const mediaPath = await readMediaPath(clips[index], `서브클립 ${index + 1}`);
+      if (mediaPath !== sourceState.mediaPath) throw new Error(`서브클립 ${index + 1}이 선택한 원본과 다른 미디어를 가리킵니다.`);
+    }
+    await verifySubclipBoundaries(clips, ranges, ppro, frameRate);
+    return true;
+  }
+
+  async function verifySourceInvariant(clip, expected, ppro, frameRate) {
+    const current = await captureSourceState(clip, ppro, frameRate);
+    if (current.mediaPath !== expected.mediaPath) throw new Error("서브클립 생성 중 원본 미디어 경로가 바뀌었습니다.");
+    requireSameSnapshot(current.video, expected.video, "원본 VIDEO");
+    requireSameSnapshot(current.audio, expected.audio, "원본 AUDIO");
+  }
+
   async function verifySubclipBoundaries(clips, ranges, ppro, frameRate) {
     if (!Array.isArray(clips) || !Array.isArray(ranges) || clips.length !== ranges.length || clips.length === 0) {
       throw new Error("생성된 서브클립 source 경계를 검증할 수 없습니다.");
     }
     if (!Number.isFinite(frameRate) || frameRate <= 0) throw new Error("서브클립 source 경계 검증용 프레임레이트가 올바르지 않습니다.");
-    const mediaTypes = ppro?.Constants?.MediaType;
-    if (mediaTypes?.VIDEO == null || mediaTypes?.AUDIO == null) {
-      throw new Error("Premiere MediaType API를 사용할 수 없어 서브클립 source 경계를 검증하지 못했습니다.");
-    }
+    const mediaTypes = requireMediaTypes(ppro);
     for (let index = 0; index < clips.length; index += 1) {
       const clip = clips[index];
-      if (typeof clip?.getInPoint !== "function" || typeof clip?.getOutPoint !== "function") {
-        throw new Error(`서브클립 ${index + 1}의 source in/out API를 사용할 수 없습니다.`);
-      }
       await verifyMediaBoundary(clip, ranges[index], mediaTypes.VIDEO, "VIDEO", frameRate, index);
       await verifyMediaBoundary(clip, ranges[index], mediaTypes.AUDIO, "AUDIO", frameRate, index);
     }
@@ -67,16 +90,48 @@
   }
 
   async function verifyMediaBoundary(clip, range, mediaType, label, frameRate, index) {
-    const inPoint = await runtime.maybePromise(clip.getInPoint(mediaType));
-    const outPoint = await runtime.maybePromise(clip.getOutPoint(mediaType));
-    requireFrameBoundary(inPoint, range.startFrame, frameRate, `서브클립 ${index + 1} ${label} source in`);
-    requireFrameBoundary(outPoint, range.endFrame, frameRate, `서브클립 ${index + 1} ${label} source out`);
+    const snapshot = await readBoundarySnapshot(clip, mediaType, frameRate, `서브클립 ${index + 1} ${label}`);
+    requireFrameBoundary(snapshot.inFrame, range.startFrame, `서브클립 ${index + 1} ${label} source in`);
+    requireFrameBoundary(snapshot.outFrame, range.endFrame, `서브클립 ${index + 1} ${label} source out`);
   }
 
-  function requireFrameBoundary(value, expectedFrame, frameRate, label) {
-    const seconds = Number(value?.seconds);
-    if (!Number.isFinite(seconds) || Math.abs(seconds * frameRate - Number(expectedFrame)) > FRAME_READ_TOLERANCE) {
+  async function readBoundarySnapshot(clip, mediaType, frameRate, label) {
+    if (typeof clip?.getInPoint !== "function" || typeof clip?.getOutPoint !== "function") {
+      throw new Error(`${label} source in/out API를 사용할 수 없습니다.`);
+    }
+    const inPoint = await runtime.maybePromise(clip.getInPoint(mediaType));
+    const outPoint = await runtime.maybePromise(clip.getOutPoint(mediaType));
+    const inFrame = Number(inPoint?.seconds) * frameRate;
+    const outFrame = Number(outPoint?.seconds) * frameRate;
+    if (!Number.isFinite(inFrame) || !Number.isFinite(outFrame)) throw new Error(`${label} source 경계를 읽지 못했습니다.`);
+    return Object.freeze({ inFrame, outFrame });
+  }
+
+  async function readMediaPath(clip, label) {
+    if (typeof clip?.getMediaFilePath !== "function") throw new Error(`${label}의 미디어 경로 API를 사용할 수 없습니다.`);
+    const mediaPath = String(await runtime.maybePromise(clip.getMediaFilePath()) || "").trim();
+    if (!mediaPath) throw new Error(`${label}의 미디어 파일 경로를 확인하지 못했습니다.`);
+    return mediaPath;
+  }
+
+  function requireMediaTypes(ppro) {
+    const mediaTypes = ppro?.Constants?.MediaType;
+    if (mediaTypes?.VIDEO == null || mediaTypes?.AUDIO == null) {
+      throw new Error("Premiere MediaType API를 사용할 수 없어 source 무결성을 검증하지 못했습니다.");
+    }
+    return mediaTypes;
+  }
+
+  function requireFrameBoundary(actualFrame, expectedFrame, label) {
+    if (Math.abs(Number(actualFrame) - Number(expectedFrame)) > FRAME_READ_TOLERANCE) {
       throw new Error(`${label} 경계가 요청한 원본 프레임과 다릅니다.`);
+    }
+  }
+
+  function requireSameSnapshot(actual, expected, label) {
+    if (Math.abs(actual.inFrame - expected.inFrame) > FRAME_READ_TOLERANCE
+      || Math.abs(actual.outFrame - expected.outFrame) > FRAME_READ_TOLERANCE) {
+      throw new Error(`서브클립 생성 중 ${label} in/out 상태가 바뀌었습니다.`);
     }
   }
 
@@ -125,9 +180,11 @@
   }
 
   return {
+    captureSourceState,
     createGeneratedBin,
     createSubclips,
     waitForNamedClips,
+    verifyGeneratedSubclips,
     verifySubclipBoundaries,
     moveItems,
     createAndActivateSequence,
