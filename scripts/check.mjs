@@ -25,6 +25,7 @@ for (const file of [
   "scripts/ccx-format.mjs",
   "scripts/test-ccx.mjs",
   "scripts/build-qualification-evidence.mjs",
+  "scripts/init-distribution-verification.mjs",
   "scripts/build-distribution-evidence.mjs",
 ]) {
   assert(fs.existsSync(path.join(root, file)), `distribution script is missing: ${file}`);
