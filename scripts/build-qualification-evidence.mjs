@@ -13,6 +13,8 @@ const REQUIRED_STEPS = Object.freeze([
   "persistence",
 ]);
 const REMAINING_RELEASE_GATE = "Creative Cloud install, update, and removal evidence is not represented by this file";
+const SNAPSHOT_EPSILON = 0.001;
+const MAX_MEDIA_SECONDS = 12 * 60 * 60;
 
 export function buildQualificationEvidence(options = {}) {
   const packageJson = readJson(path.join(root, "package.json"));
@@ -132,10 +134,51 @@ function validateInputs(source, ccx, qualification, version) {
   const transcriptFingerprint = qualification.steps.premiereTranscript.fingerprint;
   assert(/^tx1-\d+-[0-9a-f]{16}$/.test(String(transcriptFingerprint || "")), "invalid qualification transcript fingerprint");
   assert(qualification.steps.roughCut.transcriptFingerprint === transcriptFingerprint, "qualification transcript provenance mismatch");
-  assert(qualification.steps.roughCut.persistenceSnapshot, "qualification persistence snapshot is missing");
+  const createdSnapshot = qualification.steps.roughCut.createdSnapshot;
+  const persistenceSnapshot = qualification.steps.roughCut.persistenceSnapshot;
+  validateSnapshotV2(createdSnapshot, "qualification created snapshot");
+  validateSnapshotV2(persistenceSnapshot, "qualification persistence snapshot");
+  assert(canonicalJson(createdSnapshot) === canonicalJson(persistenceSnapshot), "qualification source-aware snapshots differ");
   assertText(qualification.steps.persistence.verifiedSessionId, "qualification persistence session id");
 }
 
+function validateSnapshotV2(value, label) {
+  assert(value?.formatVersion === 2, `${label} must use snapshot v2`);
+  assertFiniteTime(value.end, `${label} end`);
+  const seen = new Map();
+  for (const groupName of ["videoTracks", "audioTracks"]) {
+    const tracks = value[groupName];
+    assert(Array.isArray(tracks) && tracks.length <= 256, `${label} ${groupName} is invalid`);
+    for (let trackIndex = 0; trackIndex < tracks.length; trackIndex += 1) {
+      const track = tracks[trackIndex];
+      assert(Number(track?.index) === trackIndex && Array.isArray(track?.items), `${label} ${groupName} track is invalid`);
+      for (const item of track.items) {
+        assertText(item?.projectItemId, `${label} project item id`);
+        const start = assertFiniteTime(item?.start, `${label} timeline start`);
+        const end = assertFiniteTime(item?.end, `${label} timeline end`);
+        const sourceIn = assertFiniteTime(item?.sourceIn, `${label} source in`);
+        const sourceOut = assertFiniteTime(item?.sourceOut, `${label} source out`);
+        assert(end > start && sourceOut > sourceIn, `${label} item ranges are invalid`);
+        const key = String(item.projectItemId);
+        const existing = seen.get(key);
+        if (existing) {
+          assert(sameTime(existing.start, start) && sameTime(existing.end, end)
+            && sameTime(existing.sourceIn, sourceIn) && sameTime(existing.sourceOut, sourceOut), `${label} A/V item boundaries differ`);
+        } else {
+          seen.set(key, { start, end, sourceIn, sourceOut });
+        }
+      }
+    }
+  }
+  assert(seen.size > 0, `${label} contains no generated items`);
+}
+
+function assertFiniteTime(value, label) {
+  const number = Number(value);
+  assert(Number.isFinite(number) && number >= 0 && number <= MAX_MEDIA_SECONDS, `${label} is invalid`);
+  return number;
+}
+function sameTime(left, right) { return Math.abs(Number(left) - Number(right)) <= SNAPSHOT_EPSILON; }
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value && typeof value === "object") {

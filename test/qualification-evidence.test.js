@@ -13,9 +13,9 @@ function writeJson(directory, name, value) {
 }
 
 function snapshot() {
-  const item = { projectItemId: "subclip-1", projectItemName: "clip-1", start: 0, end: 1 };
+  const item = { projectItemId: "subclip-1", projectItemName: "clip-1", start: 0, end: 1, sourceIn: 0, sourceOut: 1 };
   return {
-    formatVersion: 1,
+    formatVersion: 2,
     end: 1,
     videoTracks: [{ index: 0, items: [item] }],
     audioTracks: [{ index: 0, items: [item] }],
@@ -150,6 +150,23 @@ test("rejects source, version, and transcript provenance mismatches", async () =
     broken.steps.roughCut.transcriptFingerprint = "tx1-1-fedcba9876543210";
     writeJson(files.directory, "qualification.json", broken);
     assert.throws(() => api.buildQualificationEvidence(files), /provenance mismatch/);
+  });
+});
+
+test("rejects snapshot v1 and source-boundary drift in external qualification reports", async () => {
+  const api = await import("../scripts/build-qualification-evidence.mjs");
+  await withFixture(async (files) => {
+    const legacy = qualificationReport();
+    legacy.steps.roughCut.createdSnapshot.formatVersion = 1;
+    writeJson(files.directory, "qualification.json", legacy);
+    assert.throws(() => api.buildQualificationEvidence(files), /snapshot v2/);
+
+    const drifted = qualificationReport();
+    for (const group of [drifted.steps.roughCut.persistenceSnapshot.videoTracks, drifted.steps.roughCut.persistenceSnapshot.audioTracks]) {
+      group[0].items[0].sourceIn = 0.04;
+    }
+    writeJson(files.directory, "qualification.json", drifted);
+    assert.throws(() => api.buildQualificationEvidence(files), /source-aware snapshots differ/);
   });
 });
 
