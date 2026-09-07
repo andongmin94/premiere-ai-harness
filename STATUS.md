@@ -10,6 +10,8 @@
 
 - 패널 DOM, UXP entrypoint, Premiere Pro 26.3 API 계약
 - SRT·WebVTT·Adobe 중첩 JSON 전사문 파서
+- 전사문 raw 입력·JSON 배열 폭·JSON 탐색량·segment/전체 텍스트량을 상한으로 제한하고 과대 입력 fail-closed
+- Adobe segment에 완성된 text가 있으면 중첩 words 배열을 불필요하게 순회·재조합하지 않음
 - 로컬 편집 플래너와 승인하지 않은 삭제 차단
 - 서로 다른 화자의 재촬영·필러·반복 발화 오탐 차단
 - 프로젝트·원본·전사문 stale-state 차단
