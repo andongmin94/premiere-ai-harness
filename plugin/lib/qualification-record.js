@@ -90,6 +90,7 @@
     if (!value || Number(value.formatVersion) !== QUALIFICATION_FORMAT) throw new Error("검증 기록 형식이 올바르지 않습니다.");
     const steps = {};
     for (const name of QUALIFICATION_STEPS) steps[name] = normalizeStep(name, value.steps?.[name]);
+    validateStepRelationships(steps);
     return Object.freeze({
       formatVersion: QUALIFICATION_FORMAT,
       status: QUALIFICATION_STEPS.every((name) => steps[name].status === "PASS") ? "PASS" : "PENDING",
@@ -150,6 +151,31 @@
       step.persistenceSnapshot = snapshots.normalizeSequenceSnapshot(value.persistenceSnapshot);
     }
     return Object.freeze(step);
+  }
+
+  function validateStepRelationships(steps) {
+    if (steps.rollbackSelfTest.status === "PASS" && steps.hostSelfTest.status !== "PASS") {
+      throw new Error("롤백 자체시험 기록에 선행 호스트 자체시험이 없습니다.");
+    }
+    if (steps.roughCut.status === "PASS") {
+      if (steps.premiereTranscript.status !== "PASS"
+        || steps.roughCut.transcriptFingerprint !== steps.premiereTranscript.fingerprint) {
+        throw new Error("러프컷과 Premiere 전사문 provenance가 일치하지 않습니다.");
+      }
+    }
+    if (steps.playback.status === "PASS" && steps.roughCut.status !== "PASS") {
+      throw new Error("재생 확인 기록에 선행 러프컷이 없습니다.");
+    }
+    if (steps.roughCut.status === "PASS" && steps.roughCut.persistenceSnapshot) {
+      const required = ["hostSelfTest", "rollbackSelfTest", "premiereTranscript", "playback"];
+      if (!required.every((name) => steps[name].status === "PASS")) {
+        throw new Error("저장 준비 기록에 선행 검증 단계가 누락되었습니다.");
+      }
+    }
+    if (steps.persistence.status === "PASS"
+      && (steps.roughCut.status !== "PASS" || !steps.roughCut.persistenceSnapshot)) {
+      throw new Error("영속 검증 기록에 저장 준비 결과가 없습니다.");
+    }
   }
 
   function normalizeSelection(value) {
