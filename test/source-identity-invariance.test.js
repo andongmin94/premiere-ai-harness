@@ -52,6 +52,26 @@ test("host self-test rejects source in-out mutation caused during subclip creati
   assert.equal(hasGeneratedItem(fixture, "PAI_INTERNAL_"), false);
 });
 
+test("rough cut rechecks source invariance after sequence creation and removes the created sequence on failure", async () => {
+  const fixture = makeFixture();
+  const originalCreateSequence = fixture.project.createSequenceFromMedia.bind(fixture.project);
+  const originalGetOutPoint = fixture.source.getOutPoint.bind(fixture.source);
+  fixture.project.createSequenceFromMedia = async function () {
+    const sequence = await originalCreateSequence(...arguments);
+    fixture.source.getOutPoint = async function (mediaType) {
+      const value = await originalGetOutPoint(mediaType);
+      return { seconds: value.seconds + (mediaType === "video" ? 1 / 25 : 0) };
+    };
+    return sequence;
+  };
+  await assert.rejects(
+    () => adapter.createRoughCut(fixture.ppro, [{ start: 1, end: 2 }], "MUTATED_AFTER_SEQUENCE", fast),
+    /원본 VIDEO in\/out 상태가 바뀌었습니다/
+  );
+  assert.equal(fixture.project.sequences.length, 0);
+  assert.equal(hasGeneratedItem(fixture, "PAI_OUTPUT_"), false);
+});
+
 test("source identity APIs must be available before any rough-cut mutation", async () => {
   const missingPath = makeFixture({ missingSourceMediaPathApi: true });
   await assert.rejects(
