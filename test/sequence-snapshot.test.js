@@ -110,6 +110,16 @@ test("rejects initially slipped generated TrackItems before blessing the snapsho
   assert.throws(() => snapshots.validateGeneratedSequenceSnapshot(slipped, expected), /source 범위/);
 });
 
+test("rough-cut creation rolls back when Premiere creates initially slipped TrackItems", async () => {
+  const fixture = makeFixture({ initialTrackInOffsetFrames: 1, initialTrackOutOffsetFrames: 1 });
+  await assert.rejects(
+    () => adapter.createRoughCut(fixture.ppro, [{ start: 1, end: 2 }], "INITIAL_HOST_SLIP", fast),
+    /source 범위/
+  );
+  assert.equal(fixture.project.sequences.length, 0);
+  assert.equal(fixture.parent.items.some((item) => String(item.name || "").startsWith("PAI_OUTPUT_")), false);
+});
+
 test("rejects changed generated-subclip order", async () => {
   const fixture = makeFixture();
   const created = await adapter.createRoughCut(fixture.ppro, [
