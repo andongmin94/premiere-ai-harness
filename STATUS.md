@@ -27,12 +27,13 @@
 - 생성된 각 서브클립의 media path가 원본과 동일한지 독립 대조
 - 생성된 각 서브클립의 VIDEO·AUDIO source in/out을 요청한 원본 start/end 프레임과 독립 대조
 - source identity/in-out 불일치 또는 검증 API 부재 시 시퀀스 생성 전 fail-closed 및 생성 자산 롤백
-- 생성 시퀀스의 종료 시간·트랙·클립 순서·A/V 경계 검증
+- 생성 시퀀스 snapshot v2에 트랙 배치와 각 VIDEO·AUDIO subclip source in/out을 함께 기록
+- 저장 전후와 새 패널 세션에서 timeline 구조뿐 아니라 subclip source in/out 동일성도 검증
+- snapshot v1 기록은 호환 처리하지 않고 새 qualification을 요구
 - 부분 mutation 뒤 이번 작업의 시퀀스·빈·서브클립 롤백
 - 동일 이름의 기존 사용자 시퀀스 보존
 - 호스트 자체시험 PASS 이후에만 의도된 실패 롤백 시험 허용
 - 모든 pre-save qualification 단계 PASS 이후에만 프로젝트 저장 검증 허용
-- 프로젝트 저장 전후와 새 패널 세션의 시퀀스 구조 동일성 검증
 - 패널 부팅 및 핵심 사용자 흐름 모의시험
 - 복잡도와 coverage 게이트
 - Linux/macOS/Windows 교차 플랫폼 재현 소스 패키징
@@ -64,7 +65,7 @@ Creative Cloud Desktop에서 exact CCX 설치, 동일 plugin ID의 이전 시험
 - 실제 Premiere transcript export와 fingerprint 결합 확인
 - 서브클립 프레임 경계와 A/V sync 직접 재생 확인
 - 원본 시퀀스와 원본 미디어 불변
-- 프로젝트 저장, Premiere 종료·재실행, 새 패널 세션 구조 확인
+- 프로젝트 저장, Premiere 종료·재실행, 새 패널 세션에서 timeline + subclip source in/out snapshot v2 동일성 확인
 - qualification evidence JSON 생성·보관
 - 저장소 밖 distribution verification workspace 초기화
 - 동일 ID의 이전 시험 버전에서 현재 후보로 업데이트 설치
