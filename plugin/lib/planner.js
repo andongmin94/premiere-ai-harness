@@ -307,7 +307,6 @@
     for (let index = 0; index <= value.length - size; index += 1) output.add(value.slice(index, index + size));
     return output;
   }
-
   function approvalSafetyError(message) { const error = new Error(message); error.code = "PAI_APPROVAL_SAFETY"; return error; }
   function candidate(type, start, end, confidence, reason) { return { type, start, end, confidence, reason }; }
   function isFillerOnly(text) { const tokens = tokenize(text); return tokens.length > 0 && tokens.length <= 4 && tokens.every((token) => FILLERS.has(token)); }
@@ -317,6 +316,5 @@
   function normalizeForCompare(text) { return String(text || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim(); }
   function clamp(value, min, max) { return Math.min(max, Math.max(min, Number(value))); }
   function round3(value) { return Math.round(Number(value) * 1000) / 1000; }
-
   return { PRESETS, createEditPlan, approveCandidates, mergeRanges, invertRanges, textSimilarity, selectSafeCandidates };
 });
