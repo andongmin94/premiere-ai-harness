@@ -11,6 +11,7 @@
   const MAX_RETAKE_COMPLETED_GAP_SECONDS = 0.6;
   const MAX_RETAKE_COMPLETED_LOOKBACK_SECONDS = 4;
   const MAX_FILLER_GAP_SECONDS = 0.8;
+  const MAX_DUPLICATE_FILLER_SECONDS = 1.2;
   const MIN_DUPLICATE_CHARS = 8;
   const MIN_DUPLICATE_LENGTH_RATIO = 0.65;
   const AUTO_DUPLICATE_SIMILARITY = 0.94;
@@ -56,7 +57,6 @@
       stats: approved.stats,
     });
   }
-
   function selectSafeCandidates(plan) {
     const eligible = (plan.candidates || []).filter((candidate) => candidate.confidence >= 0.9)
       .sort((left, right) => right.confidence - left.confidence || left.start - right.start || left.end - right.end);
@@ -72,7 +72,6 @@
     const order = new Map((plan.candidates || []).map((candidate, index) => [candidate.id, index]));
     return selected.sort((left, right) => order.get(left) - order.get(right));
   }
-
   function approveCandidates(plan, selectedIds) {
     validatePlan(plan);
     const candidateById = new Map(plan.candidates.map((candidate) => [String(candidate.id), candidate]));
@@ -102,14 +101,12 @@
       stats: Object.freeze({ duration: round3(duration), deletedSeconds: round3(deletedSecondsRaw), keptSeconds: round3(keptSecondsRaw), selectedCount: selected.size }),
     });
   }
-
   function detectRetakes(segments, output) {
     segments.forEach((segment, index) => {
       if (!RETAKE_SIGNALS.some((pattern) => pattern.test(segment.text))) return;
       output.push(candidate("retake", findRetakeStart(segments, index), segment.end, 0.99, "재촬영 신호가 포함된 구간"));
     });
   }
-
   function findRetakeStart(segments, index) {
     const marker = segments[index];
     let start = marker.start;
@@ -129,7 +126,6 @@
     }
     return start;
   }
-
   function detectSilences(segments, output, rules, duration) {
     appendSilenceCandidate(output, 0, segments[0].start, rules, 0, rules.preservePause, "시작 무발화");
     for (let index = 1; index < segments.length; index += 1) {
@@ -171,15 +167,22 @@
       output.push(candidate("filler", segments[runStart].start, segments[runEnd].end, 0.92, "연속 필러 발화"));
     }
   }
-
   function detectDuplicates(segments, output, rules) {
     for (let index = 1; index < segments.length; index += 1) {
-      const earlier = segments[index - 1];
       const later = segments[index];
-      if (!speakerCompatible(earlier, later) || later.start - earlier.end > 3) continue;
+      const bridge = index > 1 && isFillerOnly(segments[index - 1].text) ? segments[index - 1] : null;
+      const earlier = bridge ? segments[index - 2] : segments[index - 1];
+      if (!earlier || !speakerCompatible(earlier, later) || (bridge && !speakerCompatible(bridge, later))) continue;
+      if (bridge && (bridge.end - bridge.start > MAX_DUPLICATE_FILLER_SECONDS
+        || bridge.start - earlier.end > MAX_FILLER_GAP_SECONDS || later.start - bridge.end > MAX_FILLER_GAP_SECONDS)) continue;
+      if (!bridge && later.start - earlier.end > 3) continue;
       if (!duplicateComparable(earlier.text, later.text)) continue;
       const similarity = textSimilarity(earlier.text, later.text);
-      if (similarity < rules.duplicateSimilarity) continue;
+      if (similarity < (bridge ? AUTO_DUPLICATE_SIMILARITY : rules.duplicateSimilarity)) continue;
+      if (bridge) {
+        output.push(candidate("duplicate", earlier.start, bridge.end, 0.89, `필러 뒤 유사 반복 발화 ${(similarity * 100).toFixed(0)}%`));
+        continue;
+      }
       const target = compactForCompare(later.text).length >= compactForCompare(earlier.text).length ? earlier : later;
       const confidence = similarity >= AUTO_DUPLICATE_SIMILARITY
         ? Math.min(0.97, 0.76 + similarity * 0.21)
