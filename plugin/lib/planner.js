@@ -141,9 +141,7 @@
   }
 
   function appendSilenceCandidate(output, left, right, rules, leftPad, rightPad, label) {
-    const gap = right - left;
-    const start = left + leftPad;
-    const end = right - rightPad;
+    const gap = right - left, start = left + leftPad, end = right - rightPad;
     if (gap >= rules.silenceSeconds && end - start >= 0.2) {
       output.push(candidate("silence", start, end, Math.min(0.98, 0.82 + gap / 10), `${label} ${gap.toFixed(2)}초`));
     }
