@@ -17,6 +17,7 @@
 - 인접·중첩 후보는 confidence를 서로 상속하지 않으며 동일 삭제 범위만 중복 제거
 - 명시적 retake marker 직전의 0.6초 이하·4초 이내 완료문장에만 punctuation grace 적용
 - 원본 시작·끝 무발화 구간은 preset threshold와 speech-side breathing room을 적용한 0.89 수동 검토 후보로 제안
+- 같은 화자의 94% 이상 반복 발화 사이에 짧은 단일 filler가 낀 경우 앞 시도+filler를 0.89 수동 검토 후보로 제안
 - 서로 다른 화자의 재촬영·필러·반복 발화 오탐 차단
 - 프로젝트·원본·전사문 stale-state 차단
 - 호스트·롤백 자체시험 직전 프로젝트·클립·길이·프레임레이트 재검증
