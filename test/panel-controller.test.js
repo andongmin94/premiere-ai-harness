@@ -142,9 +142,11 @@ test("active qualification binds rough cut creation to the recorded Premiere tra
   await controller.inspectSelection();
   await controller.startQualification();
   await controller.runHostSelfTest();
+  assert.equal(document.elements.get("qualification-start").disabled, true);
 
   document.elements.get("transcript-input").value = "1\n00:00:00,000 --> 00:00:01,000\n붙여넣은 전사문입니다.";
   await controller.analyzePastedTranscript();
+  assert.equal(document.elements.get("apply").disabled, true);
   const transactionsBeforeBlockedApply = fixture.project.transactions.length;
   await controller.applyRoughCut();
   assert.equal(fixture.project.transactions.length, transactionsBeforeBlockedApply);
@@ -153,6 +155,7 @@ test("active qualification binds rough cut creation to the recorded Premiere tra
   assert.match(document.elements.get("status").textContent, /Premiere 전사문/);
 
   await controller.loadPremiereTranscript();
+  assert.equal(document.elements.get("apply").disabled, false);
   await controller.applyRoughCut();
   const qualified = controller.getQualification();
   assert.equal(fixture.project.sequences.length, 1);
@@ -162,6 +165,7 @@ test("active qualification binds rough cut creation to the recorded Premiere tra
   fixture.options.transcriptJson = JSON.stringify({ segments: [{ start: 0, end: 1, text: "changed transcript" }] });
   await controller.loadPremiereTranscript();
   assert.match(document.elements.get("status").textContent, /다른 Premiere 전사문/);
+  assert.equal(document.elements.get("apply").disabled, true);
   const transactionsBeforeMismatchedApply = fixture.project.transactions.length;
   await controller.applyRoughCut();
   assert.equal(fixture.project.transactions.length, transactionsBeforeMismatchedApply);
@@ -182,6 +186,11 @@ test("guided qualification requires host self-test before rollback and a later p
   first.initialize();
   await first.inspectSelection();
   await first.startQualification();
+  const qualificationBeforeRestart = first.getQualification();
+  assert.equal(firstDocument.elements.get("qualification-start").disabled, true);
+  await first.startQualification();
+  assert.equal(first.getQualification(), qualificationBeforeRestart);
+  assert.match(firstDocument.elements.get("status").textContent, /초기화한 뒤 다시 시작/);
   assert.equal(firstDocument.elements.get("rollback-self-test").disabled, true);
   await first.runRollbackSelfTest();
   assert.equal(fixture.project.transactions.length, 0);
