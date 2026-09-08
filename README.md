@@ -64,7 +64,7 @@ npm run evidence:qualification -- /path/to/qualification.json
 dist/PremiereAIHarness-Core-0.5.1-qualification-evidence.json
 ```
 
-이 evidence는 source tree SHA-256, exact Git commit, CCX SHA-256, 호스트 환경 fingerprint, Premiere transcript fingerprint, snapshot v3 persistence PASS 기록을 하나로 묶고 자체 SHA-256을 갖습니다. 프로젝트·클립 이름이나 원문 transcript를 별도로 복제하지 않습니다.
+Evidence builder는 입력 qualification의 created/persistence snapshot v3 구조와 source ranges가 유효하고 서로 동일한지 먼저 검증합니다. 출력 evidence에는 snapshot 원문 대신 qualification record SHA-256, source tree SHA-256, exact Git commit, CCX SHA-256, 호스트 환경 fingerprint, Premiere transcript fingerprint와 persistence 식별자를 기록하고 자체 SHA-256을 갖습니다. 프로젝트·클립 이름이나 원문 transcript를 별도로 복제하지 않습니다.
 
 Qualification에서 첫 러프컷이 PASS로 기록되면 해당 sequence identity와 생성 snapshot은 검증 기록을 초기화하기 전까지 교체할 수 없습니다. 다른 러프컷으로 다시 검증하려면 qualification을 명시적으로 초기화하고 처음부터 진행해야 합니다.
 
