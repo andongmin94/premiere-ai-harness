@@ -6,6 +6,8 @@
 
 `Premiere AI Harness Core 0.5.1 — Distribution Qualification Candidate`
 
+Core 기능 구현은 code-freeze candidate 상태입니다. 실제 `npm run verify`, 결정론적 CCX 검증, 실제 Premiere/Creative Cloud qualification 증거를 모두 확보하기 전에는 배포 상태를 승격하지 않습니다.
+
 로컬 검증 범위:
 
 - 패널 DOM, UXP entrypoint, Premiere Pro 26.3 API 계약
@@ -20,6 +22,7 @@
 - 같은 화자의 94% 이상 반복 발화 사이에 짧은 단일 filler가 낀 경우 앞 시도+filler를 0.89 수동 검토 후보로 제안
 - 서로 다른 화자의 재촬영·필러·반복 발화 오탐 차단
 - qualification provenance가 현재 편집안과 불일치하면 Apply 비활성화, 기존 qualification record가 있으면 중복 시작 차단
+- 첫 qualification roughCut PASS 뒤 sequence identity와 created snapshot을 immutable하게 유지하고 reset 전 재생성·덮어쓰기 차단
 - 프로젝트·원본·전사문 stale-state 차단
 - 호스트·롤백 자체시험 직전 프로젝트·클립·길이·프레임레이트 재검증
 - 자체시험 PASS 결과와 qualification 대상 원본의 식별자·타이밍 재대조
@@ -65,13 +68,15 @@ Creative Cloud Desktop에서 exact CCX 설치, 동일 plugin ID의 이전 시험
 
 코드는 아래 결과를 표현하고 검증할 수 있지만 **현재 저장소 자체에는 실제 수행 증거가 아직 없습니다.** 따라서 현재 제품 상태는 계속 `Distribution Qualification Candidate`입니다.
 
+- Linux/macOS/Windows에서 exact code-freeze commit의 `npm ci` + `npm run verify` PASS와 source manifest SHA-256 대조
+- POSIX Info-ZIP 3.0 환경에서 exact commit의 `npm run verify:distribution` PASS와 결정론적 CCX 보관
 - Creative Cloud Desktop에서 exact CCX 설치
 - Premiere Pro 26.3+ 패널 로드
-- 실제 파일 기반 클립의 호스트·롤백 자체시험에서 원본 media path/in-out 불변성과 subclip media identity·VIDEO/AUDIO source in/out 대조 PASS
+- 실제 파일 기반 클립의 호스트·롤백 자체시험에서 원본 media path/in/out 불변성과 subclip media identity·VIDEO/AUDIO source in/out 대조 PASS
 - 실제 Premiere transcript export와 fingerprint 결합 확인
 - 서브클립 프레임 경계와 A/V sync 직접 재생 확인
 - 원본 시퀀스와 원본 미디어 불변
-- 프로젝트 저장, Premiere 종료·재실행, 새 패널 세션에서 timeline + project-item source + TrackItem source snapshot v3 동일성 확인
+- 프로젝트 저장, Premiere 실제 종료·재실행, 새 패널 세션에서 timeline + project-item source + TrackItem source snapshot v3 동일성 확인
 - qualification evidence JSON 생성·보관
 - 저장소 밖 distribution verification workspace 초기화
 - 동일 ID의 이전 시험 버전에서 현재 후보로 업데이트 설치
