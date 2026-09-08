@@ -16,6 +16,7 @@
 - 로컬 편집 플래너와 승인하지 않은 삭제 차단
 - 인접·중첩 후보는 confidence를 서로 상속하지 않으며 동일 삭제 범위만 중복 제거
 - 명시적 retake marker 직전의 0.6초 이하·4초 이내 완료문장에만 punctuation grace 적용
+- 원본 시작·끝 무음도 preset threshold와 speech-side breathing room을 적용해 삭제 후보로 제안
 - 서로 다른 화자의 재촬영·필러·반복 발화 오탐 차단
 - 프로젝트·원본·전사문 stale-state 차단
 - 호스트·롤백 자체시험 직전 프로젝트·클립·길이·프레임레이트 재검증
@@ -64,7 +65,7 @@ Creative Cloud Desktop에서 exact CCX 설치, 동일 plugin ID의 이전 시험
 
 - Creative Cloud Desktop에서 exact CCX 설치
 - Premiere Pro 26.3+ 패널 로드
-- 실제 파일 기반 클립의 호스트·롤백 자체시험에서 원본 media path/in-out 불변성과 subclip media identity·VIDEO/AUDIO source in/out 대조 PASS
+- 실제 파일 기반 클립의 호스트·롤백 자체시험에서 원본 media path/in/out 불변성과 subclip media identity·VIDEO/AUDIO source in/out 대조 PASS
 - 실제 Premiere transcript export와 fingerprint 결합 확인
 - 서브클립 프레임 경계와 A/V sync 직접 재생 확인
 - 원본 시퀀스와 원본 미디어 불변
