@@ -161,6 +161,12 @@ test("active qualification binds rough cut creation to the recorded Premiere tra
   assert.equal(fixture.project.sequences.length, 1);
   assert.equal(qualified.steps.roughCut.status, "PASS");
   assert.equal(qualified.steps.roughCut.transcriptFingerprint, qualified.steps.premiereTranscript.fingerprint);
+  assert.equal(document.elements.get("apply").disabled, true);
+  const transactionsBeforeSecondApply = fixture.project.transactions.length;
+  await controller.applyRoughCut();
+  assert.equal(fixture.project.transactions.length, transactionsBeforeSecondApply);
+  assert.equal(fixture.project.sequences.length, 1);
+  assert.match(document.elements.get("status").textContent, /이미 기록/);
 
   fixture.options.transcriptJson = JSON.stringify({ segments: [{ start: 0, end: 1, text: "changed transcript" }] });
   await controller.loadPremiereTranscript();
@@ -170,7 +176,7 @@ test("active qualification binds rough cut creation to the recorded Premiere tra
   await controller.applyRoughCut();
   assert.equal(fixture.project.transactions.length, transactionsBeforeMismatchedApply);
   assert.equal(fixture.project.sequences.length, 1);
-  assert.match(document.elements.get("status").textContent, /현재 편집안의 전사문이 다릅니다/);
+  assert.match(document.elements.get("status").textContent, /현재 편집안의 전사문이 다릅니다|이미 기록/);
 });
 
 test("guided qualification requires host self-test before rollback and a later panel session before persistence", async () => {

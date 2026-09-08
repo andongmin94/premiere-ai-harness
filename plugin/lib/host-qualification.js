@@ -79,6 +79,9 @@
 
   function recordRoughCut(storage, environment, selection, result, sessionId, transcriptFingerprintValue, completedAt) {
     const current = records.requireQualificationRecord(storage, environment, selection);
+    if (current.steps.roughCut.status === "PASS") {
+      throw new Error("qualification 러프컷은 이미 기록되었습니다. 검증 기록을 초기화한 뒤 다시 생성하십시오.");
+    }
     const fingerprint = normalizeTranscriptFingerprint(transcriptFingerprintValue);
     if (current.steps.premiereTranscript.status !== "PASS" || !fingerprint
       || current.steps.premiereTranscript.fingerprint !== fingerprint) {

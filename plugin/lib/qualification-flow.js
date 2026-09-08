@@ -66,6 +66,9 @@
     function assertRoughCutTranscript(transcript, segments) {
       if (!matchesCurrentSelection()) return null;
       const current = requireActiveQualification();
+      if (current.steps.roughCut.status === "PASS") {
+        throw new Error("qualification 러프컷은 이미 기록되었습니다. 다른 러프컷을 만들려면 검증 기록을 초기화하십시오.");
+      }
       if (current.steps.premiereTranscript.status !== "PASS") {
         throw new Error("실제 Premiere 전사문을 먼저 불러와 검증하십시오.");
       }
