@@ -131,19 +131,19 @@
   }
 
   function detectSilences(segments, output, rules, duration) {
-    appendSilenceCandidate(output, 0, segments[0].start, rules, 0, rules.preservePause, "시작 무음");
+    appendSilenceCandidate(output, 0, segments[0].start, rules, 0, rules.preservePause, "시작 무발화");
     for (let index = 1; index < segments.length; index += 1) {
       appendSilenceCandidate(output, segments[index - 1].end, segments[index].start, rules,
         rules.preservePause, rules.preservePause, "긴 무음");
     }
     appendSilenceCandidate(output, segments[segments.length - 1].end, duration, rules,
-      rules.preservePause, 0, "끝 무음");
+      rules.preservePause, 0, "끝 무발화");
   }
 
   function appendSilenceCandidate(output, left, right, rules, leftPad, rightPad, label) {
     const gap = right - left, start = left + leftPad, end = right - rightPad;
     if (gap >= rules.silenceSeconds && end - start >= 0.2) {
-      output.push(candidate("silence", start, end, Math.min(0.98, 0.82 + gap / 10), `${label} ${gap.toFixed(2)}초`));
+      output.push(candidate("silence", start, end, Math.min(label === "긴 무음" ? 0.98 : 0.89, 0.82 + gap / 10), `${label} ${gap.toFixed(2)}초`));
     }
   }
 
