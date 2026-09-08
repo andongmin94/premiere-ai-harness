@@ -28,6 +28,7 @@
     }
 
     function start() {
+      if (record) throw new Error("기존 실제 Premiere 검증 기록을 초기화한 뒤 다시 시작하십시오.");
       record = PAI.beginQualification(storage, requireEnvironment(), requireSelection(), sessionId);
       render();
       return record;
@@ -132,7 +133,7 @@
       const matching = Boolean(record && selection && PAI.qualificationMatchesSelection(record, selection));
       return {
         hasQualification: Boolean(record),
-        canStartQualification: Boolean(environment && selection),
+        canStartQualification: Boolean(environment && selection && !record),
         canRunRollback: Boolean(matching && record.steps.hostSelfTest.status === "PASS"),
         canConfirmPlayback: Boolean(matching
           && record.steps.roughCut.status === "PASS"
