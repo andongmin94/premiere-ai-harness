@@ -39,8 +39,9 @@
 - [ ] 새 패널 세션에서 timeline + project source + TrackItem source snapshot v3 완전 일치 PASS
 - [ ] 패널의 기계 판독용 PASS 기록을 JSON으로 보관
 - [ ] `npm run evidence:qualification -- /path/to/qualification.json` 성공
+- [ ] evidence builder가 qualification의 created/persistence snapshot v3와 source ranges 동일성을 검증한 뒤 evidence를 생성했는지 확인
 - [ ] qualification evidence의 source tree SHA-256·Git commit·CCX SHA-256·host qualification PASS 결합 확인
-- [ ] qualification evidence가 created/persistence snapshot v3와 동일 source ranges를 포함하는지 확인
+- [ ] qualification evidence의 qualification record SHA-256이 보관한 PASS JSON과 일치하는지 확인
 - [ ] qualification evidence의 `releaseReady`가 `false`인지 확인
 
 ## Creative Cloud 배포 게이트
