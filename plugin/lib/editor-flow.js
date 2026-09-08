@@ -104,6 +104,7 @@
       if (session.plan) {
         try {
           currentApproval();
+          qualification.assertRoughCutTranscript(session.transcript, session.segments);
           approvalValid = true;
         } catch (_) {
           approvalValid = false;
