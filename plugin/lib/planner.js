@@ -38,7 +38,7 @@
 
     const candidates = [];
     detectRetakes(segments, candidates);
-    detectSilences(segments, candidates, rules);
+    detectSilences(segments, candidates, rules, duration);
     detectFillerRuns(segments, candidates);
     detectDuplicates(segments, candidates, rules);
     const merged = mergeCandidates(candidates, duration);
@@ -130,15 +130,22 @@
     return start;
   }
 
-  function detectSilences(segments, output, rules) {
+  function detectSilences(segments, output, rules, duration) {
+    appendSilenceCandidate(output, 0, segments[0].start, rules, 0, rules.preservePause, "시작 무음");
     for (let index = 1; index < segments.length; index += 1) {
-      const previous = segments[index - 1];
-      const current = segments[index];
-      const gap = current.start - previous.end;
-      if (gap < rules.silenceSeconds) continue;
-      const start = previous.end + rules.preservePause;
-      const end = current.start - rules.preservePause;
-      if (end - start >= 0.2) output.push(candidate("silence", start, end, Math.min(0.98, 0.82 + gap / 10), `긴 무음 ${gap.toFixed(2)}초`));
+      appendSilenceCandidate(output, segments[index - 1].end, segments[index].start, rules,
+        rules.preservePause, rules.preservePause, "긴 무음");
+    }
+    appendSilenceCandidate(output, segments[segments.length - 1].end, duration, rules,
+      rules.preservePause, 0, "끝 무음");
+  }
+
+  function appendSilenceCandidate(output, left, right, rules, leftPad, rightPad, label) {
+    const gap = right - left;
+    const start = left + leftPad;
+    const end = right - rightPad;
+    if (gap >= rules.silenceSeconds && end - start >= 0.2) {
+      output.push(candidate("silence", start, end, Math.min(0.98, 0.82 + gap / 10), `${label} ${gap.toFixed(2)}초`));
     }
   }
 
