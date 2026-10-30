@@ -129,6 +129,42 @@ test("host self-test rejects a Premiere selection that changed after inspection"
   assert.match(document.elements.get("status").textContent, /원본 클립이 바뀌었습니다/);
 });
 
+test("failed host self-test rerun revokes certification until a new successful run", async () => {
+  const document = makeDocument();
+  const storage = makeStorage();
+  const fixture = makeFixture();
+  const controller = controllerApi.createController({ document, storage, requireFn: makeRequire(fixture.ppro) });
+  controller.initialize();
+  await controller.inspectSelection();
+  await controller.loadPremiereTranscript();
+  await controller.runHostSelfTest();
+
+  assert.ok(storage.values.has(certification.CERTIFICATION_STORAGE_KEY));
+  assert.equal(document.elements.get("host-badge").textContent, "인증됨");
+  assert.equal(document.elements.get("apply").disabled, false);
+
+  fixture.options.failActivate = true;
+  await controller.runHostSelfTest();
+
+  assert.match(document.elements.get("status").textContent, /활성화/);
+  assert.equal(storage.values.has(certification.CERTIFICATION_STORAGE_KEY), false);
+  assert.equal(document.elements.get("host-badge").textContent, "미인증");
+  assert.equal(document.elements.get("apply").disabled, true);
+
+  const transactionsBeforeBlockedApply = fixture.project.transactions.length;
+  await controller.applyRoughCut();
+  assert.equal(fixture.project.transactions.length, transactionsBeforeBlockedApply);
+  assert.match(document.elements.get("status").textContent, /호스트 자체시험을 먼저 통과/);
+
+  fixture.options.failActivate = false;
+  await controller.runHostSelfTest();
+
+  assert.ok(storage.values.has(certification.CERTIFICATION_STORAGE_KEY));
+  assert.equal(document.elements.get("host-badge").textContent, "인증됨");
+  assert.equal(document.elements.get("apply").disabled, false);
+  assert.match(document.elements.get("status").textContent, /자체시험과 자동 정리를 모두 통과/);
+});
+
 test("active qualification binds rough cut creation to the recorded Premiere transcript", async () => {
   const document = makeDocument();
   const storage = makeStorage();
