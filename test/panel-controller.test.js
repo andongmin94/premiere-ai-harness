@@ -9,7 +9,7 @@ const { makeFixture } = require("./premiere-fixture.js");
 
 const IDS = [
   "inspect", "host-self-test", "cleanup-self-test", "load-premiere", "analyze-pasted", "apply", "reset-data",
-  "preset", "transcript-input", "candidate-list", "plan-stats", "selection-info", "host-badge", "host-status", "status",
+  "preset", "transcript-input", "candidate-list", "plan-stats", "plan-report", "selection-info", "host-badge", "host-status", "status",
   "custom-retakes", "retake-signals", "custom-fillers", "filler-words",
   "qualification-start", "rollback-self-test", "qualification-confirm-playback", "qualification-prepare-persistence", "qualification-confirm-persistence",
   "qualification-reset", "qualification-status", "qualification-report",
@@ -279,11 +279,74 @@ test("re-inspecting a clip deliberately clears the prior transcript and plan", a
   await controller.inspectSelection();
   await controller.loadPremiereTranscript();
   assert.ok(controller.getSession().plan);
+  assert.notEqual(document.elements.get("plan-report").value, "");
   document.elements.get("transcript-input").value = "old pasted text";
   await controller.inspectSelection();
   assert.equal(controller.getSession().plan, null);
   assert.equal(controller.getSession().transcript, null);
   assert.equal(document.elements.get("transcript-input").value, "");
+  assert.equal(document.elements.get("plan-report").value, "");
+});
+
+test("reviewed plan JSON follows the current checkbox selection before host certification", async () => {
+  const document = makeDocument();
+  const storage = makeStorage();
+  const fixture = makeFixture({ transcriptJson: JSON.stringify({ segments: [
+    { start: 0, end: 1, text: "start over" },
+    { start: 1, end: 10, text: "본문 설명을 계속하겠습니다." },
+  ] }) });
+  const controller = controllerApi.createController({ document, storage, requireFn: makeRequire(fixture.ppro) });
+  controller.initialize();
+  await controller.inspectSelection();
+  await controller.loadPremiereTranscript();
+  const report = document.elements.get("plan-report");
+  assert.deepEqual(JSON.parse(report.value), {
+    keepRanges: [{ start: 1, end: 10 }],
+    stats: { duration: 10, deletedSeconds: 1, keptSeconds: 9, selectedCount: 1 },
+  });
+  assert.equal(document.elements.get("host-badge").textContent, "미인증");
+  assert.equal(document.elements.get("apply").disabled, true);
+  assert.equal(storage.values.has(certification.CERTIFICATION_STORAGE_KEY), false);
+
+  const checkbox = document.elements.get("candidate-list").children[0].children[0];
+  assert.equal(checkbox.checked, true);
+  checkbox.checked = false;
+  await checkbox.dispatch("change");
+  assert.deepEqual(JSON.parse(report.value), {
+    keepRanges: [{ start: 0, end: 10 }],
+    stats: { duration: 10, deletedSeconds: 0, keptSeconds: 10, selectedCount: 0 },
+  });
+  assert.equal(fixture.project.transactions.length, 0);
+});
+
+test("reviewed plan JSON clears for unsafe selections and returns after correction", async () => {
+  const document = makeDocument();
+  const fixture = makeFixture({ transcriptJson: JSON.stringify({ segments: [
+    { start: 0, end: 5, text: "start over" },
+    { start: 5, end: 10, text: "본문 설명을 계속하겠습니다." },
+  ] }) });
+  const controller = controllerApi.createController({ document, storage: makeStorage(), requireFn: makeRequire(fixture.ppro) });
+  controller.initialize();
+  await controller.inspectSelection();
+  await controller.loadPremiereTranscript();
+  const report = document.elements.get("plan-report");
+  const unchanged = {
+    keepRanges: [{ start: 0, end: 10 }],
+    stats: { duration: 10, deletedSeconds: 0, keptSeconds: 10, selectedCount: 0 },
+  };
+  assert.deepEqual(JSON.parse(report.value), unchanged);
+
+  const checkbox = document.elements.get("candidate-list").children[0].children[0];
+  assert.equal(checkbox.checked, false);
+  checkbox.checked = true;
+  await checkbox.dispatch("change");
+  assert.equal(report.value, "");
+  assert.match(document.elements.get("plan-stats").textContent, /안전 상한 40%/);
+
+  checkbox.checked = false;
+  await checkbox.dispatch("change");
+  assert.deepEqual(JSON.parse(report.value), unchanged);
+  assert.equal(fixture.project.transactions.length, 0);
 });
 
 test("failed pasted-transcript analysis does not replace the existing protected plan", async () => {

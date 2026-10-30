@@ -58,6 +58,7 @@
       const root = byId("candidate-list");
       root.replaceChildren();
       candidateInputs = [];
+      byId("plan-report").value = "";
       if (!plan || plan.candidates.length === 0) {
         root.textContent = plan ? "자동 삭제 후보가 없습니다." : "전사문을 분석하면 삭제 후보가 표시됩니다.";
         byId("plan-stats").textContent = plan ? "원본을 그대로 유지합니다." : "";
@@ -85,6 +86,7 @@
     }
 
     function setPlanStats(approval, error) {
+      byId("plan-report").value = error ? "" : `${JSON.stringify(approval, null, 2)}\n`;
       byId("plan-stats").textContent = error
         ? String(error.message || error)
         : `${approval.stats.selectedCount}개 삭제 · ${formatTime(approval.stats.deletedSeconds)} 제거 · ${formatTime(approval.stats.keptSeconds)} 유지`;

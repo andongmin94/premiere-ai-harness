@@ -84,6 +84,12 @@
       </details>
       <div id="candidate-list" class="candidate-list">전사문을 분석하면 삭제 후보가 표시됩니다.</div>
       <div id="plan-stats" class="info-line"></div>
+      <details>
+        <summary>검토 결과 JSON</summary>
+        <p class="help">현재 체크한 삭제 후보를 반영한 유지 구간과 통계입니다. 시간은 원본 시작을 0으로 한 초 단위이며, 실제 Premiere 적용 전 계획입니다. 아래 내용을 복사해 .json 파일로 보관할 수 있습니다.</p>
+        <label for="plan-report">승인한 유지 구간·통계</label>
+        <textarea id="plan-report" class="report" readonly spellcheck="false"></textarea>
+      </details>
     </section>
 
     <section class="card accent">
