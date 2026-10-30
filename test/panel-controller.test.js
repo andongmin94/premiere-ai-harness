@@ -416,6 +416,134 @@ test("empty custom lists disable matching for pasted transcripts and unchecking 
   assert.deepEqual(controller.getSession().plan, original);
 });
 
+test("planner list settings restore after a panel restart without storing editing data", async () => {
+  const document = makeDocument();
+  const storage = makeStorage();
+  const fixture = makeFixture({ transcriptJson: JSON.stringify({ segments: [
+    { start: 0, end: 0.8, text: "앞 문장입니다." },
+    { start: 1, end: 1.4, text: "please [cut?]" },
+    { start: 1.6, end: 1.8, text: "어" },
+    { start: 1.9, end: 2.1, text: "음" },
+    { start: 2.4, end: 10, text: "본문 설명을 계속하겠습니다." },
+  ] }) });
+  const controller = controllerApi.createController({ document, storage, requireFn: makeRequire(fixture.ppro) });
+  controller.initialize();
+  assert.equal(storage.values.has(controllerApi.PLANNER_SETTINGS_STORAGE_KEY), false);
+  await controller.inspectSelection();
+  await controller.loadPremiereTranscript();
+  document.elements.get("transcript-input").value = "저장하지 않을 원고 초안";
+  for (const [toggle, input, value] of [["custom-retakes", "retake-signals", " [CUT?] \n\n"], ["custom-fillers", "filler-words", " 에헴 \n \n EH! "]]) {
+    document.elements.get(toggle).checked = true;
+    await document.elements.get(toggle).dispatch("change");
+    document.elements.get(input).value = value;
+    await document.elements.get(input).dispatch("input");
+  }
+  document.elements.get("custom-fillers").checked = false;
+  await document.elements.get("custom-fillers").dispatch("change");
+  assert.deepEqual(JSON.parse(storage.getItem(controllerApi.PLANNER_SETTINGS_STORAGE_KEY)), {
+    retakeSignalsEnabled: true, retakeSignals: ["[CUT?]"], fillersEnabled: false, fillers: ["에헴", "EH!"],
+  });
+  assert.deepEqual([...storage.values.keys()].sort(), [controllerApi.PLANNER_SETTINGS_STORAGE_KEY, "unrelated"].sort());
+
+  const restoredDocument = makeDocument();
+  const restored = controllerApi.createController({ document: restoredDocument, storage, requireFn: makeRequire(fixture.ppro) });
+  restored.initialize();
+  assert.equal(restoredDocument.elements.get("custom-retakes").checked, true);
+  assert.equal(restoredDocument.elements.get("retake-signals").value, "[CUT?]");
+  assert.equal(restoredDocument.elements.get("custom-fillers").checked, false);
+  assert.equal(restoredDocument.elements.get("filler-words").value, "에헴\nEH!");
+  assert.equal(restoredDocument.elements.get("transcript-input").value, "");
+  assert.equal(restored.getSession().selection, null);
+  assert.equal(restored.getSession().transcript, null);
+  assert.equal(restored.getSession().plan, null);
+  await restored.inspectSelection();
+  await restored.loadPremiereTranscript();
+  const candidates = restored.getSession().plan.candidates;
+  assert.ok(candidates.some((candidate) => candidate.type === "retake"));
+  assert.ok(candidates.some((candidate) => candidate.type === "filler"));
+  assert.deepEqual(candidates, controller.getSession().plan.candidates);
+});
+
+test("enabled empty planner lists remain disabled detectors after a panel restart", async () => {
+  const document = makeDocument();
+  const storage = makeStorage();
+  const fixture = makeFixture({ transcriptJson: JSON.stringify({ segments: [
+    { start: 0, end: 0.8, text: "앞 문장입니다." },
+    { start: 1, end: 1.4, text: "start over" },
+    { start: 1.6, end: 1.8, text: "어" },
+    { start: 1.9, end: 2.1, text: "음" },
+    { start: 2.4, end: 10, text: "본문 설명을 계속하겠습니다." },
+  ] }) });
+  const controller = controllerApi.createController({ document, storage, requireFn: makeRequire(fixture.ppro) });
+  controller.initialize();
+  await controller.inspectSelection();
+  for (const id of ["custom-retakes", "custom-fillers"]) {
+    document.elements.get(id).checked = true;
+    await document.elements.get(id).dispatch("change");
+  }
+  assert.deepEqual(JSON.parse(storage.getItem(controllerApi.PLANNER_SETTINGS_STORAGE_KEY)), {
+    retakeSignalsEnabled: true, retakeSignals: [], fillersEnabled: true, fillers: [],
+  });
+
+  const restoredDocument = makeDocument();
+  const restored = controllerApi.createController({ document: restoredDocument, storage, requireFn: makeRequire(fixture.ppro) });
+  restored.initialize();
+  for (const id of ["custom-retakes", "custom-fillers"]) assert.equal(restoredDocument.elements.get(id).checked, true);
+  for (const id of ["retake-signals", "filler-words"]) assert.equal(restoredDocument.elements.get(id).value, "");
+  await restored.inspectSelection();
+  await restored.loadPremiereTranscript();
+  assert.deepEqual(restored.getSession().plan.candidates, []);
+
+  for (const id of ["custom-retakes", "custom-fillers"]) {
+    restoredDocument.elements.get(id).checked = false;
+    await restoredDocument.elements.get(id).dispatch("change");
+  }
+  const candidates = restored.getSession().plan.candidates;
+  assert.ok(candidates.some((candidate) => candidate.type === "retake"));
+  assert.ok(candidates.some((candidate) => candidate.type === "filler"));
+  assert.deepEqual(JSON.parse(storage.getItem(controllerApi.PLANNER_SETTINGS_STORAGE_KEY)), {
+    retakeSignalsEnabled: false, retakeSignals: [], fillersEnabled: false, fillers: [],
+  });
+});
+
+test("plugin data reset removes saved planner lists and keeps defaults after restart", async () => {
+  const document = makeDocument();
+  const storage = makeStorage();
+  const fixture = makeFixture({ transcriptJson: JSON.stringify({ segments: [
+    { start: 0, end: 0.8, text: "앞 문장입니다." },
+    { start: 1, end: 1.4, text: "start over" },
+    { start: 1.6, end: 1.8, text: "어" },
+    { start: 1.9, end: 2.1, text: "음" },
+    { start: 2.4, end: 10, text: "본문 설명을 계속하겠습니다." },
+  ] }) });
+  const controller = controllerApi.createController({ document, storage, requireFn: makeRequire(fixture.ppro) });
+  controller.initialize();
+  await controller.inspectSelection();
+  for (const [toggle, input, value] of [["custom-retakes", "retake-signals", "컷"], ["custom-fillers", "filler-words", "에헴"]]) {
+    document.elements.get(toggle).checked = true;
+    await document.elements.get(toggle).dispatch("change");
+    document.elements.get(input).value = value;
+    await document.elements.get(input).dispatch("input");
+  }
+  assert.equal(storage.values.has(controllerApi.PLANNER_SETTINGS_STORAGE_KEY), true);
+  await document.elements.get("reset-data").dispatch("click");
+  assert.deepEqual([...storage.values.entries()], [["unrelated", "keep"]]);
+  for (const id of ["custom-retakes", "custom-fillers"]) assert.equal(document.elements.get(id).checked, false);
+  for (const id of ["retake-signals", "filler-words"]) assert.equal(document.elements.get(id).value, "");
+
+  const restoredDocument = makeDocument();
+  const restored = controllerApi.createController({ document: restoredDocument, storage, requireFn: makeRequire(fixture.ppro) });
+  restored.initialize();
+  for (const id of ["custom-retakes", "custom-fillers"]) assert.equal(restoredDocument.elements.get(id).checked, false);
+  for (const id of ["retake-signals", "filler-words"]) assert.equal(restoredDocument.elements.get(id).value, "");
+  await restored.inspectSelection();
+  await restored.loadPremiereTranscript();
+  const candidates = restored.getSession().plan.candidates;
+  assert.ok(candidates.some((candidate) => candidate.type === "retake"));
+  assert.ok(candidates.some((candidate) => candidate.type === "filler"));
+  assert.equal(storage.values.has(controllerApi.PLANNER_SETTINGS_STORAGE_KEY), false);
+});
+
 test("list controls work before transcript analysis, disable while busy, and reset to defaults", async () => {
   const document = makeDocument();
   const fixture = makeFixture();

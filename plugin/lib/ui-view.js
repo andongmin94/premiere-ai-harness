@@ -95,10 +95,27 @@
     }
 
     function readPlannerOptions() {
+      const settings = readPlannerSettings();
       return {
-        retakeSignals: byId("custom-retakes").checked ? readLines(byId("retake-signals").value) : undefined,
-        fillers: byId("custom-fillers").checked ? readLines(byId("filler-words").value) : undefined,
+        retakeSignals: settings.retakeSignalsEnabled ? settings.retakeSignals : undefined,
+        fillers: settings.fillersEnabled ? settings.fillers : undefined,
       };
+    }
+
+    function readPlannerSettings() {
+      return {
+        retakeSignalsEnabled: byId("custom-retakes").checked,
+        retakeSignals: readLines(byId("retake-signals").value),
+        fillersEnabled: byId("custom-fillers").checked,
+        fillers: readLines(byId("filler-words").value),
+      };
+    }
+
+    function setPlannerSettings(settings) {
+      byId("custom-retakes").checked = settings.retakeSignalsEnabled === true;
+      byId("custom-fillers").checked = settings.fillersEnabled === true;
+      byId("retake-signals").value = settings.retakeSignals.join("\n");
+      byId("filler-words").value = settings.fillers.join("\n");
     }
 
     function updateControls(state) {
@@ -146,6 +163,8 @@
       setPlanStats,
       selectedCandidateIds,
       readPlannerOptions,
+      readPlannerSettings,
+      setPlannerSettings,
       updateControls,
       reset,
     };

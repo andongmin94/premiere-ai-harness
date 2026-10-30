@@ -21,6 +21,7 @@
   "use strict";
 
   const PANEL_ID = "premiere-ai-harness-panel";
+  const PLANNER_SETTINGS_STORAGE_KEY = "pai.core.planner-settings.v1";
 
   function start(root) {
     const requireFn = root.require || (typeof require === "function" ? require : null);
@@ -65,6 +66,7 @@
       initializeHost();
       qualification.load();
       view.setStatus("프로젝트 패널에서 원본 클립 하나를 선택하십시오.", "info");
+      loadPlannerSettings();
       refreshControls();
     }
 
@@ -78,16 +80,34 @@
       view.bind("apply", "click", applyRoughCut);
       view.bind("reset-data", "click", resetPluginData);
       view.bind("preset", "change", editor.rebuildPlan);
-      view.bind("custom-retakes", "change", editor.rebuildPlan);
-      view.bind("custom-fillers", "change", editor.rebuildPlan);
-      view.bind("retake-signals", "input", editor.rebuildPlan);
-      view.bind("filler-words", "input", editor.rebuildPlan);
+      view.bind("custom-retakes", "change", updatePlannerSettings);
+      view.bind("custom-fillers", "change", updatePlannerSettings);
+      view.bind("retake-signals", "input", updatePlannerSettings);
+      view.bind("filler-words", "input", updatePlannerSettings);
       view.bind("qualification-start", "click", startQualification);
       view.bind("rollback-self-test", "click", runRollbackSelfTest);
       view.bind("qualification-confirm-playback", "click", confirmQualificationPlayback);
       view.bind("qualification-prepare-persistence", "click", prepareQualificationPersistence);
       view.bind("qualification-confirm-persistence", "click", confirmQualificationPersistence);
       view.bind("qualification-reset", "click", resetQualification);
+    }
+
+    function loadPlannerSettings() {
+      try {
+        const raw = storage?.getItem(PLANNER_SETTINGS_STORAGE_KEY);
+        if (raw) view.setPlannerSettings(JSON.parse(raw));
+      } catch (error) {
+        view.setStatus(`목록 설정 불러오기 실패: ${messageOf(error)}`, "error");
+      }
+    }
+
+    function updatePlannerSettings() {
+      editor.rebuildPlan();
+      try {
+        storage.setItem(PLANNER_SETTINGS_STORAGE_KEY, JSON.stringify(view.readPlannerSettings()));
+      } catch (error) {
+        view.setStatus(`목록 설정 저장 실패: ${messageOf(error)}`, "error");
+      }
     }
 
     function initializeHost() {
@@ -185,6 +205,7 @@
         PAI.clearCertification(storage);
         certification = null;
         qualification.clear();
+        storage?.removeItem(PLANNER_SETTINGS_STORAGE_KEY);
         PAI.resetSession(session);
         view.reset();
         renderHost();
@@ -258,5 +279,5 @@
 
   function messageOf(error) { return String(error?.message || error); }
 
-  return { PANEL_ID, start, createController };
+  return { PANEL_ID, PLANNER_SETTINGS_STORAGE_KEY, start, createController };
 });
