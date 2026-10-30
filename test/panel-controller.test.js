@@ -440,6 +440,52 @@ test("editing an analyzed pasted transcript invalidates its plan until reanalysi
   assert.equal(document.elements.get("apply").disabled, false);
 });
 
+test("caption markup reaches custom retake and filler approval", async () => {
+  const inputs = [
+    ["SRT", `1\n00:00:00,000 --> 00:00:00,500\nre<b>start</b> please\n\n2\n00:00:00,500 --> 00:00:00,800\nE<i>H</i>!\n\n3\n00:00:00,900 --> 00:00:01,200\n<u>e</u>h.\n\n4\n00:00:01,400 --> 00:00:10,000\n본문 설명을 계속하겠습니다.`],
+    ["WebVTT", `WEBVTT\n\n00:00:00.000 --> 00:00:00.500\nre<b>start</b> please\n\n00:00:00.500 --> 00:00:00.800\nE<i>H</i>!\n\n00:00:00.900 --> 00:00:01.200\n<u>e</u>h.\n\n00:00:01.400 --> 00:00:10.000\n본문 설명을 계속하겠습니다.`],
+  ];
+  for (const [format, input] of inputs) {
+    const document = makeDocument();
+    const fixture = makeFixture();
+    const controller = controllerApi.createController({ document, storage: makeStorage(), requireFn: makeRequire(fixture.ppro) });
+    controller.initialize();
+    await controller.inspectSelection();
+    for (const [toggle, field, value] of [["custom-retakes", "retake-signals", "restart please"], ["custom-fillers", "filler-words", "eh"]]) {
+      document.elements.get(toggle).checked = true;
+      await document.elements.get(toggle).dispatch("change");
+      document.elements.get(field).value = value;
+      await document.elements.get(field).dispatch("input");
+    }
+    document.elements.get("transcript-input").value = input;
+    await controller.analyzePastedTranscript();
+
+    const session = controller.getSession();
+    assert.ok(session.plan, format);
+    assert.deepEqual(session.segments.map((segment) => segment.text), [
+      "restart please", "EH!", "eh.", "본문 설명을 계속하겠습니다.",
+    ], format);
+    assert.deepEqual(session.plan.candidates.map(({ type, start, end }) => ({ type, start, end })), [
+      { type: "retake", start: 0, end: 0.5 },
+      { type: "filler", start: 0.5, end: 1.2 },
+    ], format);
+    const report = document.elements.get("plan-report");
+    assert.deepEqual(JSON.parse(report.value), {
+      keepRanges: [{ start: 1.2, end: 10 }],
+      stats: { duration: 10, deletedSeconds: 1.2, keptSeconds: 8.8, selectedCount: 2 },
+    }, format);
+
+    const retakeCheckbox = document.elements.get("candidate-list").children[0].children[0];
+    retakeCheckbox.checked = false;
+    await retakeCheckbox.dispatch("change");
+    assert.deepEqual(JSON.parse(report.value), {
+      keepRanges: [{ start: 0, end: 0.5 }, { start: 1.2, end: 10 }],
+      stats: { duration: 10, deletedSeconds: 0.7, keptSeconds: 9.3, selectedCount: 1 },
+    }, format);
+    assert.equal(fixture.project.transactions.length, 0, format);
+  }
+});
+
 test("value-backed JSON reaches custom retake and filler approval", async () => {
   const document = makeDocument();
   const fixture = makeFixture();

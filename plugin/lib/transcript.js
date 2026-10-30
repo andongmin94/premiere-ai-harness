@@ -240,7 +240,7 @@
 
   function timeLike(value) { return Number.isFinite(secondsFromUnknown(value)); }
   function finiteSeconds(value, label) { const seconds = secondsFromUnknown(value); if (!Number.isFinite(seconds)) throw transcriptError(`${label} 시간이 숫자가 아닙니다.`); return Math.round(seconds * 1000) / 1000; }
-  function cleanCaptionText(text) { return normalizeText(String(text || "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">")); }
+  function cleanCaptionText(text) { return normalizeText(String(text || "").replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">")); }
   function normalizeText(value) { return String(value || "").replace(/\s+/g, " ").trim(); }
   function normalizeNewlines(value) { return String(value || "").replace(/\r\n?/g, "\n"); }
   function looksLikeSrt(text) { return /\d{1,3}:\d{2}:\d{2}[,.]\d{1,3}\s*-->/.test(text); }

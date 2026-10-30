@@ -13,6 +13,27 @@ test("parses SRT and normalizes caption markup", () => {
   assert.equal(Object.isFrozen(segments), true);
 });
 
+test("caption markup preserves inline words and punctuation in SRT and WebVTT", () => {
+  const srtMarkup = "1\n00:00:00,000 --> 00:00:00,500\nre<b>start</b> please\n\n2\n00:00:00,500 --> 00:00:00,800\nE<i>H</i>!\n\n3\n00:00:00,900 --> 00:00:01,200\n<u>e</u>h.";
+  const srtPlain = "1\n00:00:00,000 --> 00:00:00,500\nrestart please\n\n2\n00:00:00,500 --> 00:00:00,800\nEH!\n\n3\n00:00:00,900 --> 00:00:01,200\neh.";
+  const vttMarkup = "WEBVTT\n\n00:00.000 --> 00:00.500\nre<b>start</b> please\n\n00:00.500 --> 00:00.800\nE<i>H</i>!\n\n00:00.900 --> 00:01.200\n<u>e</u>h.";
+  const vttPlain = "WEBVTT\n\n00:00.000 --> 00:00.500\nrestart please\n\n00:00.500 --> 00:00.800\nEH!\n\n00:00.900 --> 00:01.200\neh.";
+  for (const [markup, plain] of [[srtMarkup, srtPlain], [vttMarkup, vttPlain]]) {
+    assert.deepEqual(transcript.parseTranscript(markup), transcript.parseTranscript(plain));
+  }
+});
+
+test("caption markup retains whitespace, line breaks, SRT br tags, and escaped text", () => {
+  const srt = "1\n00:00:00,000 --> 00:00:03,000\n  <b>first</b>   second\nthird<br>fourth<br/>fifth<br />sixth<BR>seventh<BR/>eighth<BR />ninth &amp; &nbsp; &lt;cut&gt;";
+  const vtt = "WEBVTT\n\n00:00.000 --> 00:03.000\n  <c.em>first</c>   second\nthird &amp; &nbsp; &lt;cut&gt;";
+  assert.deepEqual(transcript.parseTranscript(srt).map(({ start, end, text }) => ({ start, end, text })), [
+    { start: 0, end: 3, text: "first second third fourth fifth sixth seventh eighth ninth & <cut>" },
+  ]);
+  assert.deepEqual(transcript.parseTranscript(vtt).map(({ start, end, text }) => ({ start, end, text })), [
+    { start: 0, end: 3, text: "first second third & <cut>" },
+  ]);
+});
+
 test("parses WebVTT cue identifiers, settings, and NOTE blocks", () => {
   const segments = transcript.parseTranscript(`WEBVTT\n\nNOTE ignored\nmetadata\n\nintro\n00:00.000 --> 00:01.500 align:start\nHello world\n\n00:02.000 --> 00:03.250\nSecond cue`, "vtt");
   assert.deepEqual(segments.map(({ start, end, text }) => ({ start, end, text })), [
