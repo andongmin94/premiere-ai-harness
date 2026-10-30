@@ -19,6 +19,37 @@ Premiere Pro 26.3+에서 대사 중심 원본 클립의 **검토형 러프컷**�
 - qualification의 첫 PASS 러프컷은 검증 기록을 초기화하기 전까지 교체 불가
 - 네트워크, API 키, Companion, FFmpeg, 백그라운드 서비스 없음
 
+## Standalone planner 설정
+
+`plugin/lib/planner.js`의 기존 `createEditPlan(segments, options)` 호출에서 재촬영 신호와 필러 목록을 지정할 수 있습니다. `preset`, `duration`, `rules`와 반환 편집안 형식은 그대로 사용합니다.
+
+```js
+const { createEditPlan } = require("./plugin/lib/planner.js");
+
+const segments = [
+  { start: 0, end: 0.6, text: "컷, 다시 녹음" },
+  { start: 0.8, end: 1.1, text: "에" },
+  { start: 1.2, end: 1.5, text: "에" },
+  { start: 1.8, end: 8, text: "이제 본문 설명을 시작하겠습니다." },
+];
+const plan = createEditPlan(segments, {
+  preset: "balanced",
+  duration: 8,
+  retakeSignals: ["컷", "다시 녹음", "restart please"],
+  fillers: ["어", "음", "에", "uh", "um"],
+});
+console.log(plan.candidates);
+```
+
+| 옵션 | 사용자 목록의 판정 방식 | 생략하거나 `undefined`인 경우 |
+| --- | --- | --- |
+| `retakeSignals` | 문자열 앞뒤 공백을 제거하고 대소문자를 구분하지 않는 부분 문자열로 탐지. 정규식 문자는 문자 그대로 취급 | 기존 한국어·영어 재촬영 정규식 유지 |
+| `fillers` | 전사문과 동일하게 소문자화·구두점 정규화 후 단어 단위로 판정. 각 항목은 정확히 한 단어여야 함 | `어`, `음`, `아`, `그`, `뭐`, `약간`, `이제`, `그러니까`, `uh`, `um`, `erm`, `hmm` 유지 |
+
+각 배열은 해당 기본 목록을 **교체**합니다. 한 옵션만 지정하면 다른 목록은 기본값을 유지합니다. `retakeSignals: []`는 재촬영 신호 탐지를 끄고, `fillers: []`는 연속 필러와 반복 발화 사이의 필러 판정을 끕니다. 빈 문자열·문자열이 아닌 항목·배열이 아닌 값은 오류이며, 필러의 여러 단어 또는 구두점만 있는 항목도 오류입니다. 예를 들어 `" EH! "`는 필러 `eh`로 인식하지만 `"you know"`는 한 항목으로 지정할 수 없습니다.
+
+기존 `conservative`·`balanced`·`tight`의 수치, 화자·간격·재촬영 lookback, 삭제량 안전 상한은 유지됩니다. 사용자 목록은 호출 안에서만 사용하며 입력 배열을 변경하지 않습니다. Premiere 패널은 기존 프리셋 호출 경로를 사용합니다. **이 설정은 Node/독립 planner에서 검증하며, 실제 Premiere 호스트 연동은 미검증입니다.**
+
 ## 개발 검증
 
 Linux, macOS, Windows의 소스 검증은 다음 명령을 사용합니다.

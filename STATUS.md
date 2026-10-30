@@ -16,6 +16,7 @@ Core 기능 구현은 code-freeze candidate 상태입니다. 실제 `npm run ver
 - 전사문 raw 입력·JSON 배열 폭·JSON 탐색량·segment/전체 텍스트량을 상한으로 제한하고 과대 입력 fail-closed
 - Adobe segment에 완성된 text가 있으면 중첩 words 배열을 불필요하게 순회·재조합하지 않음
 - 로컬 편집 플래너와 승인하지 않은 삭제 차단
+- standalone `createEditPlan`의 `retakeSignals`·`fillers` 문자열 배열 옵션: 기본 목록 유지 또는 호출별 교체·빈 목록 비활성화, Node 검증 범위이며 실제 Premiere 호스트 연동은 미검증
 - 인접·중첩 후보는 confidence를 서로 상속하지 않으며 동일 삭제 범위만 중복 제거
 - 명시적 retake marker 직전의 0.6초 이하·4초 이내 완료문장에만 punctuation grace 적용
 - 원본 시작·끝 무발화 구간은 preset threshold와 speech-side breathing room을 적용한 0.89 수동 검토 후보로 제안

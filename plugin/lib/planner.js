@@ -25,10 +25,16 @@
     /(?:let me|i(?:'|’)ll)\s+(?:start|say|do)\s+(?:that\s+)?again|take\s+(?:that|it)\s+again|start\s+over/i,
   ];
   const FILLERS = new Set(["어", "음", "아", "그", "뭐", "약간", "이제", "그러니까", "uh", "um", "erm", "hmm"]);
-
   function createEditPlan(segments, options) {
     if (!Array.isArray(segments) || segments.length === 0) throw new Error("분석할 전사 구간이 없습니다.");
     const opts = options || {};
+    const retakeSignals = opts.retakeSignals === undefined ? RETAKE_SIGNALS
+      : stringList(opts.retakeSignals, "retakeSignals").map((text) => new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+    const fillers = opts.fillers === undefined ? FILLERS : new Set(stringList(opts.fillers, "fillers").map((text) => {
+      const tokens = tokenize(text);
+      if (tokens.length !== 1) throw new Error("편집 옵션 fillers의 각 항목은 단일 단어여야 합니다.");
+      return tokens[0];
+    }));
     const presetName = Object.prototype.hasOwnProperty.call(PRESETS, opts.preset) ? opts.preset : "balanced";
     const rules = Object.freeze(Object.assign({}, PRESETS[presetName], opts.rules || {}));
     validateRules(rules);
@@ -38,24 +44,24 @@
     if (!Number.isFinite(transcriptEnd) || transcriptEnd > duration + 0.001) throw new Error("전사문 길이가 원본보다 깁니다.");
 
     const candidates = [];
-    detectRetakes(segments, candidates);
+    detectRetakes(segments, candidates, retakeSignals);
     detectSilences(segments, candidates, rules, duration);
-    detectFillerRuns(segments, candidates);
-    detectDuplicates(segments, candidates, rules);
+    detectFillerRuns(segments, candidates, fillers);
+    detectDuplicates(segments, candidates, rules, fillers);
     const merged = mergeCandidates(candidates, duration);
     const basePlan = Object.freeze({ duration, candidates: Object.freeze(merged), rules });
     const selectedIds = selectSafeCandidates(basePlan);
     const approved = approveCandidates(basePlan, selectedIds);
     return Object.freeze({
-      version: 1,
-      preset: presetName,
-      duration,
-      rules,
+      version: 1, preset: presetName, duration, rules,
       candidates: basePlan.candidates,
       selectedIds: Object.freeze(selectedIds),
-      keepRanges: approved.keepRanges,
-      stats: approved.stats,
+      keepRanges: approved.keepRanges, stats: approved.stats,
     });
+  }
+  function stringList(value, name) {
+    if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item.trim())) throw new Error(`편집 옵션 ${name}은 비어 있지 않은 문자열의 배열이어야 합니다.`);
+    return value.map((item) => item.trim());
   }
   function selectSafeCandidates(plan) {
     const eligible = (plan.candidates || []).filter((candidate) => candidate.confidence >= 0.9)
@@ -101,9 +107,9 @@
       stats: Object.freeze({ duration: round3(duration), deletedSeconds: round3(deletedSecondsRaw), keptSeconds: round3(keptSecondsRaw), selectedCount: selected.size }),
     });
   }
-  function detectRetakes(segments, output) {
+  function detectRetakes(segments, output, retakeSignals) {
     segments.forEach((segment, index) => {
-      if (!RETAKE_SIGNALS.some((pattern) => pattern.test(segment.text))) return;
+      if (!retakeSignals.some((pattern) => pattern.test(segment.text))) return;
       output.push(candidate("retake", findRetakeStart(segments, index), segment.end, 0.99, "재촬영 신호가 포함된 구간"));
     });
   }
@@ -142,11 +148,10 @@
       output.push(candidate("silence", start, end, Math.min(label === "긴 무음" ? 0.98 : 0.89, 0.82 + gap / 10), `${label} ${gap.toFixed(2)}초`));
     }
   }
-
-  function detectFillerRuns(segments, output) {
+  function detectFillerRuns(segments, output, fillers) {
     let runStart = -1;
     for (let index = 0; index <= segments.length; index += 1) {
-      const filler = index < segments.length && isFillerOnly(segments[index].text);
+      const filler = index < segments.length && isFillerOnly(segments[index].text, fillers);
       const previous = index > 0 ? segments[index - 1] : null;
       const speakerBreak = filler && runStart >= 0 && !speakerCompatible(previous, segments[index]);
       const gapBreak = filler && runStart >= 0 && segments[index].start - previous.end > MAX_FILLER_GAP_SECONDS;
@@ -155,22 +160,17 @@
         runStart = -1;
       }
       if (filler && runStart < 0) runStart = index;
-      if (index === segments.length && runStart >= 0) {
-        appendFillerCandidate(segments, output, runStart, index - 1);
-        runStart = -1;
-      }
     }
   }
-
   function appendFillerCandidate(segments, output, runStart, runEnd) {
     if (runEnd - runStart + 1 >= 2) {
       output.push(candidate("filler", segments[runStart].start, segments[runEnd].end, 0.92, "연속 필러 발화"));
     }
   }
-  function detectDuplicates(segments, output, rules) {
+  function detectDuplicates(segments, output, rules, fillers) {
     for (let index = 1; index < segments.length; index += 1) {
       const later = segments[index];
-      const bridge = index > 1 && isFillerOnly(segments[index - 1].text) ? segments[index - 1] : null;
+      const bridge = index > 1 && isFillerOnly(segments[index - 1].text, fillers) ? segments[index - 1] : null;
       const earlier = bridge ? segments[index - 2] : segments[index - 1];
       if (!earlier || !speakerCompatible(earlier, later) || (bridge && !speakerCompatible(bridge, later))) continue;
       if (bridge && (bridge.end - bridge.start > MAX_DUPLICATE_FILLER_SECONDS
@@ -190,7 +190,6 @@
       output.push(candidate("duplicate", target.start, target.end, confidence, `유사 반복 발화 ${(similarity * 100).toFixed(0)}%`));
     }
   }
-
   function mergeCandidates(candidates, duration) {
     const normalized = candidates.map((item) => ({
       type: item.type,
@@ -309,7 +308,7 @@
   }
   function approvalSafetyError(message) { const error = new Error(message); error.code = "PAI_APPROVAL_SAFETY"; return error; }
   function candidate(type, start, end, confidence, reason) { return { type, start, end, confidence, reason }; }
-  function isFillerOnly(text) { const tokens = tokenize(text); return tokens.length > 0 && tokens.length <= 4 && tokens.every((token) => FILLERS.has(token)); }
+  function isFillerOnly(text, fillers) { const tokens = tokenize(text); return tokens.length > 0 && tokens.length <= 4 && tokens.every((token) => fillers.has(token)); }
   function endsSentence(text) { return /[.!?。！？][”’\"']?$/.test(String(text || "").trim()); }
   function tokenize(text) { return normalizeForCompare(text).split(/\s+/).filter(Boolean); }
   function compactForCompare(text) { return normalizeForCompare(text).replace(/\s+/g, ""); }

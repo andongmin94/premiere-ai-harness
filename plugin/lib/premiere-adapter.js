@@ -10,7 +10,6 @@
 
   const MAX_OUTPUT_SEGMENTS = 500;
   const ROLLBACK_PROBE_CODE = "PAI_INTENTIONAL_ROLLBACK_PROBE";
-
   async function inspectSelection(ppro) {
     const context = await getSupportedContext(ppro);
     const timing = await runtime.readSourceTiming(context.clip);
