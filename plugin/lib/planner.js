@@ -38,9 +38,9 @@
     const presetName = Object.prototype.hasOwnProperty.call(PRESETS, opts.preset) ? opts.preset : "balanced";
     const rules = Object.freeze(Object.assign({}, PRESETS[presetName], opts.rules || {}));
     validateRules(rules);
-    const duration = Number.isFinite(opts.duration) ? Number(opts.duration) : Number(segments[segments.length - 1].end);
-    if (!Number.isFinite(duration) || duration <= 0) throw new Error("원본 길이가 올바르지 않습니다.");
     const transcriptEnd = segments.reduce((maximum, segment) => Math.max(maximum, Number(segment.end)), 0);
+    const duration = Number.isFinite(opts.duration) ? Number(opts.duration) : transcriptEnd;
+    if (!Number.isFinite(duration) || duration <= 0) throw new Error("원본 길이가 올바르지 않습니다.");
     if (!Number.isFinite(transcriptEnd) || transcriptEnd > duration + 0.001) throw new Error("전사문 길이가 원본보다 깁니다.");
 
     const candidates = [];
@@ -133,13 +133,13 @@
     return start;
   }
   function detectSilences(segments, output, rules, duration) {
+    let speechEnd = segments[0].end;
     appendSilenceCandidate(output, 0, segments[0].start, rules, 0, rules.preservePause, "시작 무발화");
     for (let index = 1; index < segments.length; index += 1) {
-      appendSilenceCandidate(output, segments[index - 1].end, segments[index].start, rules,
-        rules.preservePause, rules.preservePause, "긴 무음");
+      appendSilenceCandidate(output, speechEnd, segments[index].start, rules, rules.preservePause, rules.preservePause, "긴 무음");
+      speechEnd = Math.max(speechEnd, segments[index].end);
     }
-    appendSilenceCandidate(output, segments[segments.length - 1].end, duration, rules,
-      rules.preservePause, 0, "끝 무발화");
+    appendSilenceCandidate(output, speechEnd, duration, rules, rules.preservePause, 0, "끝 무발화");
   }
 
   function appendSilenceCandidate(output, left, right, rules, leftPad, rightPad, label) {

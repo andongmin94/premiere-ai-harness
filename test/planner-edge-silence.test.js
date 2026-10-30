@@ -43,3 +43,43 @@ test("keeps the existing two-sided breathing room and auto-selection for interna
   assert.deepEqual([silence.start, silence.end], [1.2, 2.8]);
   assert.equal(plan.selectedIds.includes(silence.id), true);
 });
+
+test("uses the full speech extent for overlapping cues and inferred duration", () => {
+  const segments = [
+    segment(0, 10, "긴 설명을 끝까지 이어갑니다."),
+    segment(2, 3, "잠시 겹치는 질문입니다."),
+    segment(5, 6, "별도의 짧은 대답입니다."),
+  ];
+  const plan = planner.createEditPlan(segments, { duration: 12, preset: "balanced" });
+  assert.equal(plan.candidates.length, 1);
+  const tail = plan.candidates[0];
+  assert.equal(tail.type, "silence");
+  assert.match(tail.reason, /^끝 무발화/);
+  assert.deepEqual([tail.start, tail.end], [10.2, 12]);
+  assert.equal(tail.confidence, 0.89);
+  assert.deepEqual(plan.selectedIds, []);
+  assert.deepEqual(plan.keepRanges, [{ start: 0, end: 12 }]);
+
+  const inferred = planner.createEditPlan(segments);
+  assert.equal(inferred.duration, 10);
+  assert.deepEqual(inferred.candidates, []);
+  assert.deepEqual(inferred.keepRanges, [{ start: 0, end: 10 }]);
+});
+
+test("preserves real internal and trailing gaps after overlapping cues", () => {
+  const plan = planner.createEditPlan([
+    segment(0, 6, "긴 설명을 끝까지 이어갑니다."),
+    segment(1, 2, "잠시 겹치는 질문입니다."),
+    segment(8, 10, "별도의 짧은 대답입니다."),
+  ], { duration: 12, preset: "balanced" });
+
+  assert.equal(plan.candidates.length, 2);
+  const [internal, tail] = plan.candidates;
+  assert.deepEqual(plan.candidates.map(({ start, end }) => [start, end]), [[6.2, 7.8], [10.2, 12]]);
+  assert.match(internal.reason, /^긴 무음/);
+  assert.equal(internal.confidence, 0.98);
+  assert.match(tail.reason, /^끝 무발화/);
+  assert.equal(tail.confidence, 0.89);
+  assert.deepEqual(plan.selectedIds, [internal.id]);
+  assert.deepEqual(plan.keepRanges, [{ start: 0, end: 6.2 }, { start: 7.8, end: 12 }]);
+});

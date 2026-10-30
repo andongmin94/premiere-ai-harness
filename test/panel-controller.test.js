@@ -319,6 +319,30 @@ test("reviewed plan JSON follows the current checkbox selection before host cert
   assert.equal(fixture.project.transactions.length, 0);
 });
 
+test("overlapping WebVTT speech stays intact through panel approval JSON", async () => {
+  const document = makeDocument();
+  const fixture = makeFixture();
+  const controller = controllerApi.createController({ document, storage: makeStorage(), requireFn: makeRequire(fixture.ppro) });
+  controller.initialize();
+  await controller.inspectSelection();
+  document.elements.get("transcript-input").value = [
+    "WEBVTT", "",
+    "00:00:00.000 --> 00:00:06.000", "긴 설명을 계속하는 화자의 문장입니다.", "",
+    "00:00:01.000 --> 00:00:02.000", "중간에 짧게 겹치는 응답입니다.", "",
+    "00:00:04.000 --> 00:00:10.000", "이어서 들리는 다른 설명입니다.",
+  ].join("\n");
+  await controller.analyzePastedTranscript();
+
+  assert.equal(controller.getSession().transcript.source, "pasted");
+  assert.equal(controller.getSession().segments.length, 3);
+  assert.deepEqual(controller.getSession().plan.candidates, []);
+  assert.deepEqual(JSON.parse(document.elements.get("plan-report").value), {
+    keepRanges: [{ start: 0, end: 10 }],
+    stats: { duration: 10, deletedSeconds: 0, keptSeconds: 10, selectedCount: 0 },
+  });
+  assert.equal(fixture.project.transactions.length, 0);
+});
+
 test("reviewed plan JSON clears for unsafe selections and returns after correction", async () => {
   const document = makeDocument();
   const fixture = makeFixture({ transcriptJson: JSON.stringify({ segments: [
