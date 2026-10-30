@@ -94,6 +94,13 @@
       return candidateInputs.filter((input) => input.checked).map((input) => String(input.dataset.id || ""));
     }
 
+    function readPlannerOptions() {
+      return {
+        retakeSignals: byId("custom-retakes").checked ? readLines(byId("retake-signals").value) : undefined,
+        fillers: byId("custom-fillers").checked ? readLines(byId("filler-words").value) : undefined,
+      };
+    }
+
     function updateControls(state) {
       const busy = Boolean(state.busy);
       byId("inspect").disabled = busy;
@@ -103,6 +110,10 @@
       byId("cleanup-self-test").disabled = busy;
       byId("reset-data").disabled = busy;
       byId("preset").disabled = busy || !state.hasPlan;
+      byId("custom-retakes").disabled = busy || !state.hasSelection;
+      byId("custom-fillers").disabled = busy || !state.hasSelection;
+      byId("retake-signals").disabled = busy || !state.hasSelection || !byId("custom-retakes").checked;
+      byId("filler-words").disabled = busy || !state.hasSelection || !byId("custom-fillers").checked;
       byId("apply").disabled = busy || !state.canApply;
       byId("qualification-start").disabled = busy || !state.canStartQualification;
       byId("rollback-self-test").disabled = busy || !state.canRunRollback;
@@ -116,6 +127,10 @@
     function reset() {
       setSelection(null);
       byId("transcript-input").value = "";
+      byId("custom-retakes").checked = false;
+      byId("custom-fillers").checked = false;
+      byId("retake-signals").value = "";
+      byId("filler-words").value = "";
       renderPlan(null, function () {});
     }
 
@@ -129,10 +144,13 @@
       renderPlan,
       setPlanStats,
       selectedCandidateIds,
+      readPlannerOptions,
       updateControls,
       reset,
     };
   }
+
+  function readLines(value) { return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean); }
 
   function formatTime(seconds) {
     const value = Math.max(0, Number(seconds) || 0);

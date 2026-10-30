@@ -68,6 +68,20 @@
         <option value="balanced" selected>균형</option>
         <option value="tight">타이트</option>
       </select>
+      <details>
+        <summary>재촬영·필러 목록 설정</summary>
+        <p class="help">직접 설정을 끄면 기본 목록을 사용합니다. 켠 상태에서 비우면 해당 탐지를 끕니다. 변경하면 편집안을 다시 계산하므로 삭제 후보를 다시 검토하십시오.</p>
+        <label class="list-toggle" for="custom-retakes">
+          <input id="custom-retakes" type="checkbox" disabled /> 재촬영 문구 직접 설정
+        </label>
+        <label for="retake-signals">한 줄에 한 문구</label>
+        <textarea id="retake-signals" class="planner-list" spellcheck="false" placeholder="컷&#10;다시 녹음&#10;restart please" disabled></textarea>
+        <label class="list-toggle" for="custom-fillers">
+          <input id="custom-fillers" type="checkbox" disabled /> 필러 직접 설정
+        </label>
+        <label for="filler-words">한 줄에 한 단어</label>
+        <textarea id="filler-words" class="planner-list" spellcheck="false" placeholder="어&#10;음&#10;에&#10;uh&#10;um" disabled></textarea>
+      </details>
       <div id="candidate-list" class="candidate-list">전사문을 분석하면 삭제 후보가 표시됩니다.</div>
       <div id="plan-stats" class="info-line"></div>
     </section>

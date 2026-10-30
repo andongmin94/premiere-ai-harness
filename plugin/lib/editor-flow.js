@@ -62,11 +62,15 @@
     }
 
     function rebuildPlan() {
-      if (!session.transcript || session.segments.length === 0) return null;
+      if (!session.transcript || session.segments.length === 0) {
+        onStateChanged();
+        return null;
+      }
       try {
         const plan = createPlan(session.selection, session.segments);
         PAI.setPlan(session, plan);
         renderPlan();
+        view.setStatus("설정에 맞춰 편집안을 다시 계산했습니다. 삭제 후보를 다시 검토하십시오.", "success");
         return plan;
       } catch (error) {
         PAI.clearPlan(session);
@@ -127,10 +131,10 @@
     }
 
     function createPlan(selection, segments) {
-      return PAI.createEditPlan(segments, {
+      return PAI.createEditPlan(segments, Object.assign({
         preset: view.byId("preset").value,
         duration: selection.duration,
-      });
+      }, view.readPlannerOptions()));
     }
 
     function renderPlan() {

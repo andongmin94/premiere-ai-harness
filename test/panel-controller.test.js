@@ -10,6 +10,7 @@ const { makeFixture } = require("./premiere-fixture.js");
 const IDS = [
   "inspect", "host-self-test", "cleanup-self-test", "load-premiere", "analyze-pasted", "apply", "reset-data",
   "preset", "transcript-input", "candidate-list", "plan-stats", "selection-info", "host-badge", "host-status", "status",
+  "custom-retakes", "retake-signals", "custom-fillers", "filler-words",
   "qualification-start", "rollback-self-test", "qualification-confirm-playback", "qualification-prepare-persistence", "qualification-confirm-persistence",
   "qualification-reset", "qualification-status", "qualification-report",
 ];
@@ -264,6 +265,128 @@ test("failed pasted-transcript analysis does not replace the existing protected 
   assert.equal(controller.getSession().plan, originalPlan);
   assert.equal(controller.getSession().transcript, originalTranscript);
   assert.match(document.elements.get("status").textContent, /형식/);
+});
+
+test("custom lists reach Premiere transcript analysis and remain active after a preset change", async () => {
+  const document = makeDocument();
+  const fixture = makeFixture({ transcriptJson: JSON.stringify({ segments: [
+    { start: 0, end: 0.8, text: "앞 문장입니다." },
+    { start: 1, end: 1.4, text: "please [cut?]" },
+    { start: 1.6, end: 1.8, text: "에헴" },
+    { start: 1.9, end: 2.1, text: "EH!" },
+    { start: 2.4, end: 10, text: "본문 설명을 계속하겠습니다." },
+  ] }) });
+  const controller = controllerApi.createController({ document, storage: makeStorage(), requireFn: makeRequire(fixture.ppro) });
+  controller.initialize();
+  await controller.inspectSelection();
+  document.elements.get("custom-retakes").checked = true;
+  await document.elements.get("custom-retakes").dispatch("change");
+  document.elements.get("retake-signals").value = " [CUT?] \n\n";
+  document.elements.get("custom-fillers").checked = true;
+  await document.elements.get("custom-fillers").dispatch("change");
+  document.elements.get("filler-words").value = " 에헴 \n \n EH! ";
+
+  await controller.loadPremiereTranscript();
+  const plan = controller.getSession().plan;
+  assert.equal(controller.getSession().transcript.source, "premiere");
+  assert.ok(plan.candidates.some((candidate) => candidate.type === "retake"));
+  assert.ok(plan.candidates.some((candidate) => candidate.type === "filler"));
+
+  document.elements.get("preset").value = "tight";
+  await document.elements.get("preset").dispatch("change");
+  const rebuilt = controller.getSession().plan;
+  assert.equal(rebuilt.preset, "tight");
+  assert.deepEqual(rebuilt.candidates, plan.candidates);
+});
+
+test("empty custom lists disable matching for pasted transcripts and unchecking restores defaults", async () => {
+  const document = makeDocument();
+  const fixture = makeFixture();
+  const controller = controllerApi.createController({ document, storage: makeStorage(), requireFn: makeRequire(fixture.ppro) });
+  controller.initialize();
+  await controller.inspectSelection();
+  document.elements.get("transcript-input").value = JSON.stringify({ segments: [
+    { start: 0, end: 0.8, text: "앞 문장입니다." },
+    { start: 1, end: 1.4, text: "start over" },
+    { start: 1.6, end: 1.8, text: "어" },
+    { start: 1.9, end: 2.1, text: "음" },
+    { start: 2.4, end: 10, text: "본문 설명을 계속하겠습니다." },
+  ] });
+  await controller.analyzePastedTranscript();
+  const original = controller.getSession().plan;
+  assert.equal(controller.getSession().transcript.source, "pasted");
+  assert.ok(original.candidates.some((candidate) => candidate.type === "retake"));
+  assert.ok(original.candidates.some((candidate) => candidate.type === "filler"));
+
+  for (const id of ["custom-retakes", "custom-fillers"]) {
+    document.elements.get(id).checked = true;
+    await document.elements.get(id).dispatch("change");
+  }
+  assert.deepEqual(controller.getSession().plan.candidates, []);
+  for (const id of ["custom-retakes", "custom-fillers"]) {
+    document.elements.get(id).checked = false;
+    await document.elements.get(id).dispatch("change");
+  }
+  assert.deepEqual(controller.getSession().plan, original);
+});
+
+test("list controls work before transcript analysis, disable while busy, and reset to defaults", async () => {
+  const document = makeDocument();
+  const fixture = makeFixture();
+  const controller = controllerApi.createController({ document, storage: makeStorage(), requireFn: makeRequire(fixture.ppro) });
+  const controlIds = ["custom-retakes", "retake-signals", "custom-fillers", "filler-words"];
+  controller.initialize();
+  for (const id of controlIds) assert.equal(document.elements.get(id).disabled, true);
+  await controller.inspectSelection();
+  for (const [toggle, input, value] of [["custom-retakes", "retake-signals", "컷"], ["custom-fillers", "filler-words", "에헴"]]) {
+    assert.equal(document.elements.get(toggle).disabled, false);
+    assert.equal(document.elements.get(input).disabled, true);
+    document.elements.get(toggle).checked = true;
+    await document.elements.get(toggle).dispatch("change");
+    assert.equal(document.elements.get(input).disabled, false);
+    document.elements.get(input).value = value;
+    await document.elements.get(input).dispatch("input");
+  }
+  assert.equal(controller.getSession().plan, null);
+  const loading = controller.loadPremiereTranscript();
+  for (const id of controlIds) assert.equal(document.elements.get(id).disabled, true);
+  await loading;
+  for (const id of controlIds) assert.equal(document.elements.get(id).disabled, false);
+
+  controller.resetPluginData();
+  for (const id of ["custom-retakes", "custom-fillers"]) assert.equal(document.elements.get(id).checked, false);
+  for (const id of ["retake-signals", "filler-words"]) assert.equal(document.elements.get(id).value, "");
+  for (const id of controlIds) assert.equal(document.elements.get(id).disabled, true);
+});
+
+test("invalid filler input clears the plan and blocks Apply while remaining editable for correction", async () => {
+  const document = makeDocument();
+  const fixture = makeFixture();
+  const controller = controllerApi.createController({ document, storage: makeStorage(), requireFn: makeRequire(fixture.ppro) });
+  controller.initialize();
+  await controller.inspectSelection();
+  await controller.loadPremiereTranscript();
+  await controller.runHostSelfTest();
+  assert.equal(document.elements.get("apply").disabled, false);
+  document.elements.get("custom-fillers").checked = true;
+  await document.elements.get("custom-fillers").dispatch("change");
+  document.elements.get("filler-words").value = "two words";
+  await document.elements.get("filler-words").dispatch("input");
+  assert.equal(controller.getSession().plan, null);
+  assert.equal(document.elements.get("apply").disabled, true);
+  assert.equal(document.elements.get("custom-fillers").disabled, false);
+  assert.equal(document.elements.get("filler-words").disabled, false);
+  assert.match(document.elements.get("status").textContent, /fillers/);
+  const transactions = fixture.project.transactions.length;
+  await controller.applyRoughCut();
+  assert.equal(fixture.project.transactions.length, transactions);
+  assert.equal(fixture.project.sequences.length, 0);
+
+  document.elements.get("filler-words").value = "EH!";
+  await document.elements.get("filler-words").dispatch("input");
+  assert.ok(controller.getSession().plan);
+  assert.equal(document.elements.get("apply").disabled, false);
+  assert.equal(document.elements.get("status").dataset.kind, "success");
 });
 
 test("start registers the manifest panel id and defers controller boot to DOMContentLoaded", async () => {

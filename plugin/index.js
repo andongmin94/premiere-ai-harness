@@ -77,6 +77,10 @@
       view.bind("apply", "click", applyRoughCut);
       view.bind("reset-data", "click", resetPluginData);
       view.bind("preset", "change", editor.rebuildPlan);
+      view.bind("custom-retakes", "change", editor.rebuildPlan);
+      view.bind("custom-fillers", "change", editor.rebuildPlan);
+      view.bind("retake-signals", "input", editor.rebuildPlan);
+      view.bind("filler-words", "input", editor.rebuildPlan);
       view.bind("qualification-start", "click", startQualification);
       view.bind("rollback-self-test", "click", runRollbackSelfTest);
       view.bind("qualification-confirm-playback", "click", confirmQualificationPlayback);

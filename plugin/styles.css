@@ -28,6 +28,9 @@ button:disabled { opacity: .45; cursor: default; }
 select { height: 32px; padding: 4px 8px; }
 textarea { min-height: 120px; padding: 9px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; }
 textarea.report { min-height: 190px; white-space: pre; tab-size: 2; }
+textarea.planner-list { min-height: 76px; font-family: inherit; }
+.list-toggle { display: flex; align-items: center; gap: 6px; }
+.list-toggle input { margin: 0; }
 .info-line { margin-top: 9px; padding: 8px; border-radius: 5px; background: #202020; overflow-wrap: anywhere; }
 .badge { flex: 0 0 auto; padding: 3px 8px; border: 1px solid #666; border-radius: 999px; color: #bbb; font-size: 10px; font-weight: 700; }
 .badge[data-state="pass"] { border-color: #4f8e60; background: #263b2d; color: #9be7ad; }
