@@ -26,6 +26,7 @@ Core 기능 구현은 code-freeze candidate 상태입니다. 실제 `npm run ver
 - qualification provenance가 현재 편집안과 불일치하면 Apply 비활성화, 기존 qualification record가 있으면 중복 시작 차단
 - 첫 qualification roughCut PASS 뒤 sequence identity와 created snapshot을 immutable하게 유지하고 reset 전 재생성·덮어쓰기 차단
 - 프로젝트·원본·전사문 stale-state 차단
+- 붙여넣은 전사문 수정 시 이전 분석 초기화·재분석 안내, 작업 중 입력 잠금, 활성 Premiere 전사문 편집안 보존
 - 호스트·롤백 자체시험 직전 프로젝트·클립·길이·프레임레이트 재검증
 - 자체시험 PASS 결과와 qualification 대상 원본의 식별자·타이밍 재대조
 - 실제 Premiere 전사문 fingerprint와 qualification 러프컷 입력의 provenance 결합

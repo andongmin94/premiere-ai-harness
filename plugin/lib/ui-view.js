@@ -107,6 +107,7 @@
       byId("host-self-test").disabled = busy || !state.hasSelection || !state.hasHost;
       byId("load-premiere").disabled = busy || !state.hasSelection;
       byId("analyze-pasted").disabled = busy || !state.hasSelection;
+      byId("transcript-input").disabled = busy;
       byId("cleanup-self-test").disabled = busy;
       byId("reset-data").disabled = busy;
       byId("preset").disabled = busy || !state.hasPlan;

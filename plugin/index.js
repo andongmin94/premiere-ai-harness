@@ -74,6 +74,7 @@
       view.bind("cleanup-self-test", "click", cleanupSelfTestArtifacts);
       view.bind("load-premiere", "click", loadPremiereTranscript);
       view.bind("analyze-pasted", "click", analyzePastedTranscript);
+      view.bind("transcript-input", "input", editor.invalidatePastedTranscript);
       view.bind("apply", "click", applyRoughCut);
       view.bind("reset-data", "click", resetPluginData);
       view.bind("preset", "change", editor.rebuildPlan);

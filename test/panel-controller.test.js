@@ -261,10 +261,60 @@ test("failed pasted-transcript analysis does not replace the existing protected 
   const originalTranscript = controller.getSession().transcript;
 
   document.elements.get("transcript-input").value = "not a transcript";
+  await document.elements.get("transcript-input").dispatch("input");
+  assert.equal(controller.getSession().plan, originalPlan);
+  assert.equal(controller.getSession().transcript, originalTranscript);
   await controller.analyzePastedTranscript();
   assert.equal(controller.getSession().plan, originalPlan);
   assert.equal(controller.getSession().transcript, originalTranscript);
   assert.match(document.elements.get("status").textContent, /형식/);
+});
+
+test("editing an analyzed pasted transcript invalidates its plan until reanalysis", async () => {
+  const document = makeDocument();
+  const fixture = makeFixture();
+  const controller = controllerApi.createController({ document, storage: makeStorage(), requireFn: makeRequire(fixture.ppro) });
+  controller.initialize();
+  await controller.inspectSelection();
+  await controller.runHostSelfTest();
+  const input = document.elements.get("transcript-input");
+  input.value = JSON.stringify({ segments: [
+    { start: 0, end: 0.5, text: "start over" },
+    { start: 0.7, end: 10, text: "첫 번째 설명입니다." },
+  ] });
+  await controller.analyzePastedTranscript();
+  const selection = controller.getSession().selection;
+  const originalPlan = controller.getSession().plan;
+  assert.ok(originalPlan);
+  assert.ok(document.elements.get("candidate-list").children.length > 0);
+  assert.equal(document.elements.get("apply").disabled, false);
+
+  const replacement = JSON.stringify({ segments: [{ start: 0, end: 10, text: "수정한 설명입니다." }] });
+  input.value = replacement;
+  await input.dispatch("input");
+  assert.equal(controller.getSession().plan, null);
+  assert.equal(controller.getSession().transcript, null);
+  assert.deepEqual(controller.getSession().segments, []);
+  assert.equal(controller.getSession().selection, selection);
+  assert.equal(input.value, replacement);
+  assert.equal(document.elements.get("apply").disabled, true);
+  assert.equal(document.elements.get("candidate-list").children.length, 0);
+  assert.match(document.elements.get("status").textContent, /다시.*분석/);
+
+  document.elements.get("custom-retakes").checked = true;
+  await document.elements.get("custom-retakes").dispatch("change");
+  assert.equal(controller.getSession().plan, null);
+  const transactions = fixture.project.transactions.length;
+  await controller.applyRoughCut();
+  assert.equal(fixture.project.transactions.length, transactions);
+  assert.equal(fixture.project.sequences.length, 0);
+
+  await controller.analyzePastedTranscript();
+  assert.equal(controller.getSession().transcript.source, "pasted");
+  assert.equal(controller.getSession().segments[0].text, "수정한 설명입니다.");
+  assert.ok(controller.getSession().plan);
+  assert.notEqual(controller.getSession().plan, originalPlan);
+  assert.equal(document.elements.get("apply").disabled, false);
 });
 
 test("custom lists reach Premiere transcript analysis and remain active after a preset change", async () => {
@@ -337,6 +387,7 @@ test("list controls work before transcript analysis, disable while busy, and res
   const controlIds = ["custom-retakes", "retake-signals", "custom-fillers", "filler-words"];
   controller.initialize();
   for (const id of controlIds) assert.equal(document.elements.get(id).disabled, true);
+  assert.equal(document.elements.get("transcript-input").disabled, false);
   await controller.inspectSelection();
   for (const [toggle, input, value] of [["custom-retakes", "retake-signals", "컷"], ["custom-fillers", "filler-words", "에헴"]]) {
     assert.equal(document.elements.get(toggle).disabled, false);
@@ -350,13 +401,16 @@ test("list controls work before transcript analysis, disable while busy, and res
   assert.equal(controller.getSession().plan, null);
   const loading = controller.loadPremiereTranscript();
   for (const id of controlIds) assert.equal(document.elements.get(id).disabled, true);
+  assert.equal(document.elements.get("transcript-input").disabled, true);
   await loading;
   for (const id of controlIds) assert.equal(document.elements.get(id).disabled, false);
+  assert.equal(document.elements.get("transcript-input").disabled, false);
 
   controller.resetPluginData();
   for (const id of ["custom-retakes", "custom-fillers"]) assert.equal(document.elements.get(id).checked, false);
   for (const id of ["retake-signals", "filler-words"]) assert.equal(document.elements.get(id).value, "");
   for (const id of controlIds) assert.equal(document.elements.get(id).disabled, true);
+  assert.equal(document.elements.get("transcript-input").disabled, false);
 });
 
 test("invalid filler input clears the plan and blocks Apply while remaining editable for correction", async () => {

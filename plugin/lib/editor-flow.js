@@ -61,6 +61,13 @@
       return segments;
     }
 
+    function invalidatePastedTranscript() {
+      if (session.transcript?.source !== "pasted") return;
+      PAI.resetAnalysis(session);
+      renderPlan();
+      view.setStatus("붙여넣은 전사문이 변경되었습니다. 다시 분석하십시오.", "info");
+    }
+
     function rebuildPlan() {
       if (!session.transcript || session.segments.length === 0) {
         onStateChanged();
@@ -169,6 +176,7 @@
       inspectSelection,
       loadPremiereTranscript,
       analyzePastedTranscript,
+      invalidatePastedTranscript,
       rebuildPlan,
       applyRoughCut,
       controlState,
