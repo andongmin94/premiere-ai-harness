@@ -440,6 +440,48 @@ test("editing an analyzed pasted transcript invalidates its plan until reanalysi
   assert.equal(document.elements.get("apply").disabled, false);
 });
 
+test("value-backed JSON reaches custom retake and filler approval", async () => {
+  const document = makeDocument();
+  const fixture = makeFixture();
+  const controller = controllerApi.createController({ document, storage: makeStorage(), requireFn: makeRequire(fixture.ppro) });
+  controller.initialize();
+  await controller.inspectSelection();
+  for (const [toggle, input, value] of [["custom-retakes", "retake-signals", "[cut?]"], ["custom-fillers", "filler-words", "EH!"]]) {
+    document.elements.get(toggle).checked = true;
+    await document.elements.get(toggle).dispatch("change");
+    document.elements.get(input).value = value;
+    await document.elements.get(input).dispatch("input");
+  }
+  document.elements.get("transcript-input").value = JSON.stringify({ transcript: { segments: [
+    { start: 0, end: 0.5, value: "  [CUT?]  ", speaker: "host" },
+    { start: 0.5, end: 0.8, value: "EH!", speaker: "host" },
+    { start: 0.9, end: 1.2, value: "eh.", speaker: "host" },
+    { start: 1.4, end: 10, value: "본문 설명을 계속하겠습니다.", speaker: "host" },
+  ] } });
+  await controller.analyzePastedTranscript();
+
+  const plan = controller.getSession().plan;
+  assert.ok(plan);
+  assert.deepEqual(plan.candidates.map(({ type, start, end }) => ({ type, start, end })), [
+    { type: "retake", start: 0, end: 0.5 },
+    { type: "filler", start: 0.5, end: 1.2 },
+  ]);
+  const report = document.elements.get("plan-report");
+  assert.deepEqual(JSON.parse(report.value), {
+    keepRanges: [{ start: 1.2, end: 10 }],
+    stats: { duration: 10, deletedSeconds: 1.2, keptSeconds: 8.8, selectedCount: 2 },
+  });
+
+  const retakeCheckbox = document.elements.get("candidate-list").children[0].children[0];
+  retakeCheckbox.checked = false;
+  await retakeCheckbox.dispatch("change");
+  assert.deepEqual(JSON.parse(report.value), {
+    keepRanges: [{ start: 0, end: 0.5 }, { start: 1.2, end: 10 }],
+    stats: { duration: 10, deletedSeconds: 0.7, keptSeconds: 9.3, selectedCount: 1 },
+  });
+  assert.equal(fixture.project.transactions.length, 0);
+});
+
 test("custom lists reach Premiere transcript analysis and remain active after a preset change", async () => {
   const document = makeDocument();
   const fixture = makeFixture({ transcriptJson: JSON.stringify({ segments: [

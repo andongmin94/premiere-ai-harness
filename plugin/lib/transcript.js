@@ -146,7 +146,7 @@
     const start = secondsFromUnknown(startRaw);
     const end = secondsFromUnknown(readEnd(value, startRaw));
     const directText = firstDefined(value.text, value.transcript, value.caption);
-    let wordText = "";
+    let wordText;
     if (directText === undefined && Array.isArray(value.words)) {
       if (value.words.length > MAX_WORDS_PER_SEGMENT) throw transcriptError("한 전사 구간의 단어 수가 지원 상한을 넘었습니다.");
       wordText = value.words.map((word) => firstDefined(word?.text, word?.word, word?.value, "")).join(" ");

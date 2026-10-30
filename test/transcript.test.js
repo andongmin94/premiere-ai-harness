@@ -57,6 +57,27 @@ test("supports start plus duration JSON segments", () => {
   assert.deepEqual({ start: segments[0].start, end: segments[0].end }, { start: 1.25, end: 2 });
 });
 
+test("normalizes value text in known transcript segment arrays", () => {
+  const segments = transcript.parseTranscriptJson({ transcript: { segments: [
+    { start: 1.25, duration: 0.75, value: "  컷\n 다시   녹음  ", speakerName: "  host   speaker  " },
+  ] } });
+  assert.deepEqual(segments.map(({ start, end, text, speaker }) => ({ start, end, text, speaker })), [
+    { start: 1.25, end: 2, text: "컷 다시 녹음", speaker: "host speaker" },
+  ]);
+});
+
+test("keeps direct text and composed words ahead of JSON value text", () => {
+  const segments = transcript.parseTranscriptJson({ segments: [
+    { start: 0, end: 1, text: "explicit text", value: "secondary value" },
+    { start: 1, end: 2, transcript: "explicit transcript", value: "secondary value" },
+    { start: 2, end: 3, caption: "explicit caption", value: "secondary value" },
+    { start: 3, end: 4, words: [{ word: "composed" }, { value: "words" }], value: "secondary value" },
+  ] });
+  assert.deepEqual(segments.map((segment) => segment.text), [
+    "explicit text", "explicit transcript", "explicit caption", "composed words",
+  ]);
+});
+
 test("rejects empty, malformed, invalid timing, and value-only untrusted JSON", () => {
   assert.throws(() => transcript.parseTranscript(""), /비어/);
   assert.throws(() => transcript.parseTranscript("not a transcript"), /형식/);
