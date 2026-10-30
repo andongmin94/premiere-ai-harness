@@ -319,6 +319,56 @@ test("reviewed plan JSON follows the current checkbox selection before host cert
   assert.equal(fixture.project.transactions.length, 0);
 });
 
+test("frame-based tail approval follows selection and preset changes", async () => {
+  const document = makeDocument();
+  const duration = 301 / 30;
+  const fixture = makeFixture({ duration, fps: 30 });
+  const controller = controllerApi.createController({ document, storage: makeStorage(), requireFn: makeRequire(fixture.ppro) });
+  controller.initialize();
+  await controller.inspectSelection();
+  for (const toggle of ["custom-retakes", "custom-fillers"]) {
+    document.elements.get(toggle).checked = true;
+    await document.elements.get(toggle).dispatch("change");
+  }
+  document.elements.get("transcript-input").value = JSON.stringify({ segments: [
+    { start: 0, end: 8, text: "중간 대사입니다." },
+  ] });
+  await controller.analyzePastedTranscript();
+
+  const report = document.elements.get("plan-report");
+  const unchanged = {
+    keepRanges: [{ start: 0, end: duration }],
+    stats: { duration: 10.033, deletedSeconds: 0, keptSeconds: 10.033, selectedCount: 0 },
+  };
+  assert.deepEqual(JSON.parse(report.value), unchanged);
+  const checkbox = document.elements.get("candidate-list").children[0].children[0];
+  assert.equal(checkbox.checked, false);
+  checkbox.checked = true;
+  await checkbox.dispatch("change");
+  assert.deepEqual(JSON.parse(report.value), {
+    keepRanges: [{ start: 0, end: 8.2 }],
+    stats: { duration: 10.033, deletedSeconds: 1.833, keptSeconds: 8.2, selectedCount: 1 },
+  });
+
+  document.elements.get("preset").value = "tight";
+  await document.elements.get("preset").dispatch("change");
+  assert.equal(controller.getSession().plan.preset, "tight");
+  assert.deepEqual(JSON.parse(report.value), unchanged);
+  const rebuiltCheckbox = document.elements.get("candidate-list").children[0].children[0];
+  assert.equal(rebuiltCheckbox.checked, false);
+  rebuiltCheckbox.checked = true;
+  await rebuiltCheckbox.dispatch("change");
+  assert.deepEqual(JSON.parse(report.value), {
+    keepRanges: [{ start: 0, end: 8.15 }],
+    stats: { duration: 10.033, deletedSeconds: 1.883, keptSeconds: 8.15, selectedCount: 1 },
+  });
+
+  rebuiltCheckbox.checked = false;
+  await rebuiltCheckbox.dispatch("change");
+  assert.deepEqual(JSON.parse(report.value), unchanged);
+  assert.equal(fixture.project.transactions.length, 0);
+});
+
 test("overlapping WebVTT speech stays intact through panel approval JSON", async () => {
   const document = makeDocument();
   const fixture = makeFixture();

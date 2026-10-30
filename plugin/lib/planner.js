@@ -194,7 +194,7 @@
     const normalized = candidates.map((item) => ({
       type: item.type,
       start: clamp(round3(item.start), 0, duration),
-      end: clamp(round3(item.end), 0, duration),
+      end: item.end === duration ? duration : clamp(round3(item.end), 0, duration),
       confidence: clamp(item.confidence, 0, 1),
       reason: item.reason,
     })).filter((item) => item.end - item.start >= 0.05).sort((left, right) => left.start - right.start || left.end - right.end);
@@ -225,7 +225,7 @@
       if (previous && range.start <= previous.end + EPSILON) previous.end = Math.max(previous.end, range.end);
       else result.push({ start: range.start, end: range.end });
     }
-    return result.map((range) => ({ start: round3(range.start), end: round3(range.end) }));
+    return result.map((range) => ({ start: round3(range.start), end: range.end === duration ? duration : round3(range.end) }));
   }
 
   function invertRanges(deletions, duration) {
@@ -235,7 +235,7 @@
       if (deletion.start > cursor + EPSILON) keep.push({ start: round3(cursor), end: round3(deletion.start) });
       cursor = Math.max(cursor, deletion.end);
     }
-    if (cursor < duration - EPSILON) keep.push({ start: round3(cursor), end: round3(duration) });
+    if (cursor < duration - EPSILON) keep.push({ start: round3(cursor), end: duration });
     return keep;
   }
 

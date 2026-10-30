@@ -24,6 +24,42 @@ test("suggests leading and trailing no-speech ranges without auto-selecting them
   assert.deepEqual(approved.keepRanges, [{ start: 1.8, end: 8.2 }]);
 });
 
+test("preserves frame-based source endpoints through tail approval for every preset", () => {
+  const cases = [
+    { duration: 301 / 30, roundedDuration: 10.033, deleted: { conservative: 1.783, balanced: 1.833, tight: 1.883 } },
+    { duration: 302 / 30, roundedDuration: 10.067, deleted: { conservative: 1.817, balanced: 1.867, tight: 1.917 } },
+  ];
+  const keepEnds = { conservative: 8.25, balanced: 8.2, tight: 8.15 };
+  for (const sample of cases) {
+    for (const [preset, keepEnd] of Object.entries(keepEnds)) {
+      const plan = planner.createEditPlan([segment(0, 8, "중간 대사입니다.", "host")], {
+        duration: sample.duration, preset, retakeSignals: [], fillers: [],
+      });
+      assert.equal(plan.duration, sample.duration);
+      assert.equal(plan.candidates.length, 1);
+      const tail = plan.candidates[0];
+      assert.match(tail.reason, /^끝 무발화/);
+      assert.equal(tail.end, sample.duration);
+      assert.deepEqual(plan.selectedIds, []);
+      assert.deepEqual(plan.keepRanges, [{ start: 0, end: sample.duration }]);
+
+      const approved = planner.approveCandidates(plan, [tail.id]);
+      assert.deepEqual(approved.keepRanges, [{ start: 0, end: keepEnd }]);
+      assert.deepEqual(approved.stats, {
+        duration: sample.roundedDuration, deletedSeconds: sample.deleted[preset],
+        keptSeconds: keepEnd, selectedCount: 1,
+      });
+
+      const unchecked = planner.approveCandidates(plan, []);
+      assert.deepEqual(unchecked.keepRanges, [{ start: 0, end: sample.duration }]);
+      assert.deepEqual(unchecked.stats, {
+        duration: sample.roundedDuration, deletedSeconds: 0,
+        keptSeconds: sample.roundedDuration, selectedCount: 0,
+      });
+    }
+  }
+});
+
 test("does not suggest edge no-speech ranges below the active preset threshold", () => {
   const plan = planner.createEditPlan([
     segment(0.7, 9.3, "가장자리 여백은 짧습니다.", "host"),
